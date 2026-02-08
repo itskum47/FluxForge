@@ -1,7 +1,6 @@
 <p align="center">
   <img src="docs/assets/fluxforge-banner.png" alt="FluxForge" />
 </p>
-
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" /></a>
   <img src="https://img.shields.io/badge/status-active%20development-orange" />
@@ -9,8 +8,6 @@
   <img src="https://img.shields.io/badge/cloud--native-yes-success" />
   <img src="https://img.shields.io/badge/event--driven-yes-purple" />
 </p>
-
----
 
 # FluxForge
 
