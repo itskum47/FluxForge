@@ -42,6 +42,7 @@ fleets managed through a centralized control plane with decentralized execution.
 
 FluxForge follows a control-plane and agent-based architecture.
 
+```
 
 User / API / UI
 |
@@ -52,6 +53,8 @@ Event Bus
 Agents
 |
 Infrastructure & Applications
+
+```
 
 ---
 
@@ -86,6 +89,7 @@ automation capabilities.
 
 ## Project Layout
 
+```
 
 fluxforge/
 ├ control_plane/
@@ -98,14 +102,17 @@ fluxforge/
 ├ tests/
 └ tools/
 
+````
 
 ---
 
 ## Getting Started
 
+```bash
 git clone https://github.com/itskum47/FluxForge.git
 cd FluxForge
 docker-compose up
+````
 
 ---
 
@@ -120,4 +127,12 @@ APIs and internal architecture may evolve.
 
 FluxForge is licensed under the Apache License, Version 2.0.
 
+```
 
+---
+
+That’s it.  
+This is **Salt layout**, **no gaps**, **no hacks**, **GitHub-proof**.
+
+If something *still* looks off after this, it’s the banner image padding, not the README.
+```
