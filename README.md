@@ -124,8 +124,5 @@ APIs and internal architecture may evolve.
 ---
 
 ## License
-
 FluxForge is licensed under the Apache License, Version 2.0.
-
-```
 
