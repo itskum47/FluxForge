@@ -129,10 +129,3 @@ FluxForge is licensed under the Apache License, Version 2.0.
 
 ```
 
----
-
-That’s it.  
-This is **Salt layout**, **no gaps**, **no hacks**, **GitHub-proof**.
-
-If something *still* looks off after this, it’s the banner image padding, not the README.
-```
