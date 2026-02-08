@@ -1,36 +1,53 @@
 <p align="center">
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue" />
+  <img src="https://img.shields.io/badge/status-active--development-orange" />
+  <img src="https://img.shields.io/badge/control--plane-distributed-6cc7b9" />
+  <img src="https://img.shields.io/badge/event--driven-yes-purple" />
+</p>
+
+<p align="center">
   <img src="docs/assets/fluxforge-banner.png" alt="FluxForge">
 </p>
 
-FluxForge is a distributed, event-driven control plane for infrastructure and
-application operations.
+- **Documentation:** _Coming soon_
+- **Issues:** Open an issue (bug report, feature request, discussion)
 
-It provides remote execution, desired-state enforcement, and automation
-capabilities across cloud, on-prem, containerized, and hybrid environments.
-
-FluxForge is designed to scale from single-node deployments to large,
-distributed fleets managed through a centralized control plane.
+_FluxForge is a fast, event-driven, and scalable control plane for infrastructure and application automation._
 
 ---
 
-## Features
+## About FluxForge
+
+FluxForge is a cloud-native, distributed control plane designed to manage infrastructure
+and application operations across heterogeneous environments.
+
+Built with an event-driven architecture, FluxForge enables real-time automation,
+remote execution, and desired-state enforcement across cloud, on-prem, containerized,
+and hybrid systems.
+
+FluxForge is designed to scale from small deployments to large, distributed fleets,
+providing a centralized control plane with decentralized execution.
+
+---
+
+## Key Capabilities
 
 - Distributed remote execution
-- Event-driven automation
+- Event-driven automation workflows
 - Declarative desired-state management
-- Secure agent-based architecture
-- Modular execution system
-- API-first design
+- Secure agent-based communication
+- Modular and extensible execution system
+- API-first architecture
 
 ---
 
-## Architecture
+## Architecture Overview
 
-FluxForge follows a control-plane and agent-based architecture.
+FluxForge follows a control-plane and agent-based architecture model.
 
 ```
 
-User / API
+User / API / UI
 |
 Control Plane
 |
@@ -38,7 +55,7 @@ Event Bus
 |
 Agents
 |
-Infrastructure
+Infrastructure & Applications
 
 ```
 
@@ -47,20 +64,18 @@ Infrastructure
 ## Core Components
 
 ### Control Plane
-Responsible for state management, workflow orchestration, scheduling, and event
-processing.
+Responsible for orchestration, state management, scheduling, and event processing.
 
 ### Agents
-Lightweight runtimes deployed on managed systems to execute tasks, enforce state,
-and report system information.
+Lightweight runtimes deployed on managed nodes to execute tasks, enforce state,
+and report system data back to the control plane.
 
 ### Event System
-Provides real-time event delivery for execution triggers, state changes, and
-automation workflows.
+Provides real-time event propagation for executions, state changes, and workflows.
 
 ### Modules
-Pluggable execution units that extend FluxForge functionality across system,
-application, and cloud operations.
+Pluggable execution units extending FluxForge with system, application, and cloud
+automation capabilities.
 
 ---
 
@@ -68,7 +83,7 @@ application, and cloud operations.
 
 - Infrastructure automation
 - Configuration enforcement
-- Event-based remediation
+- Event-driven remediation
 - Application lifecycle management
 - Hybrid and multi-cloud operations
 
@@ -103,18 +118,16 @@ docker-compose up
 
 ---
 
-## Documentation
-
-Additional documentation is available in the `docs/` directory.
-
----
-
 ## Project Status
 
 FluxForge is under active development.
+
+APIs and internal architecture may evolve as the project matures.
 
 ---
 
 ## License
 
 FluxForge is licensed under the Apache License, Version 2.0.
+
+```
