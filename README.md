@@ -1,12 +1,3 @@
-Alright. One shot. No commentary. No theory.
-**Copy. Paste. Commit. Done.**
-
-This is the **Salt-style, gap-safe, same-structure README**.
-Exactly what you asked for.
-
----
-
-```md
 <p>
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue">
   <img src="https://img.shields.io/badge/status-active--development-orange">
@@ -51,7 +42,6 @@ fleets managed through a centralized control plane with decentralized execution.
 
 FluxForge follows a control-plane and agent-based architecture.
 
-```
 
 User / API / UI
 |
@@ -62,8 +52,6 @@ Event Bus
 Agents
 |
 Infrastructure & Applications
-
-```
 
 ---
 
@@ -98,7 +86,6 @@ automation capabilities.
 
 ## Project Layout
 
-```
 
 fluxforge/
 ├ control_plane/
@@ -111,17 +98,14 @@ fluxforge/
 ├ tests/
 └ tools/
 
-````
 
 ---
 
 ## Getting Started
 
-```bash
 git clone https://github.com/itskum47/FluxForge.git
 cd FluxForge
 docker-compose up
-````
 
 ---
 
@@ -136,5 +120,4 @@ APIs and internal architecture may evolve.
 
 FluxForge is licensed under the Apache License, Version 2.0.
 
-```
 
