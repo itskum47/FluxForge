@@ -1,125 +1,145 @@
+<p align="center">
+  <img src="docs/assets/fluxforge-banner.png" alt="FluxForge" />
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" /></a>
+  <img src="https://img.shields.io/badge/status-active%20development-orange" />
+  <img src="https://img.shields.io/badge/type-control--plane-6cc7b9" />
+  <img src="https://img.shields.io/badge/cloud--native-yes-success" />
+  <img src="https://img.shields.io/badge/event--driven-yes-purple" />
+</p>
+
+---
+
 # FluxForge
 
-**A Cloud-Native, Event-Driven Distributed Control Plane for Infrastructure and Applications**
+**A Cloud-Native, Event-Driven Distributed Control Plane for Infrastructure & Applications**
 
-FluxForge is an opinionated control plane designed to orchestrate infrastructure and application operations across distributed environments. It combines remote execution, state enforcement, and event-driven automation into a single, API-first platform.
+FluxForge is an opinionated control plane designed to orchestrate infrastructure and application operations across distributed environments. It unifies remote execution, desired-state management, and event-driven automation into a single, extensible platform.
 
 Think of FluxForge as:
 
-> **Salt + Kubernetes + Event-Driven Automation**
-> unified under a simpler, visual, and extensible control plane.
+- The execution power of Salt  
+- The control-loop mindset of Kubernetes  
+- The flexibility of event-driven automation  
+
+Combined into a simpler, visual, and API-first control plane.
 
 ---
 
 ## Why FluxForge
 
-Modern infrastructure teams operate across heterogeneous environments: cloud, on-prem, containers, VMs, and edge. Existing tools often solve only part of the problem:
+Modern infrastructure is fragmented.
 
-* **Configuration tools** focus on state, but lack real-time orchestration
-* **Orchestrators** manage workloads, but not operational workflows
-* **Automation tools** execute tasks, but lack a global control plane
+Teams operate across:
+- Cloud and on-prem environments
+- Containers, VMs, and bare metal
+- Multiple automation and orchestration tools
+
+Most existing solutions solve only part of the problem:
+- **Configuration tools** enforce state but lack real-time orchestration
+- **Orchestrators** manage workloads but not operational workflows
+- **Automation tools** execute tasks but lack a global control plane
 
 FluxForge exists to unify these concerns.
 
-It provides a single control plane that:
-
-* Understands **desired state**
-* Reacts to **events**
-* Executes **distributed actions**
-* Continuously reports **actual state**
+It provides a single system that:
+- Maintains **desired state**
+- Reacts to **events**
+- Executes **distributed actions**
+- Continuously observes **actual state**
 
 ---
 
 ## Core Concepts
 
 ### Control Plane
-
-The central authority that maintains desired state, processes events, schedules workflows, and coordinates agents.
+The central authority responsible for state management, workflow orchestration, event processing, and agent coordination.
 
 ### Agents
+Lightweight runtimes deployed on managed nodes. Agents securely execute tasks, report state, stream logs, and maintain heartbeats with the control plane.
 
-Lightweight runtimes deployed on managed nodes. Agents securely execute tasks, report state, stream logs, and respond to control plane commands.
-
-### Event Bus
-
-An internal event system that drives automation. All state changes, task executions, and external triggers flow through events.
+### Event System
+An internal event bus that drives automation. State changes, task executions, alerts, and external triggers are all modeled as events.
 
 ### Workflows
-
-Declarative, event-driven workflows modeled as directed graphs. Workflows define how the system reacts to changes in infrastructure or application state.
+Declarative, event-driven workflows modeled as directed graphs. Workflows define how the system responds to changes in infrastructure or application state.
 
 ### Modules
-
-Pluggable execution units that provide capabilities such as system operations, service management, container control, or cloud API interactions.
+Pluggable execution units that provide operational capabilities such as system management, service control, container operations, and cloud API interactions.
 
 ---
 
 ## High-Level Architecture
 
 ```
+
 User / API / UI
-        ↓
+↓
 Control Plane API
-        ↓
+↓
 State Engine + Workflow Engine
-        ↓
+↓
 Event Bus
-        ↓
+↓
 Distributed Agent Fleet
-        ↓
+↓
 Infrastructure & Applications
+
 ```
 
 ---
 
 ## Key Features
 
-* Distributed remote execution
-* Event-driven automation workflows
-* Declarative desired state management
-* Secure agent communication
-* Modular execution framework
-* API-first design
-* Visual observability of nodes, tasks, and workflows
+- Distributed remote execution
+- Event-driven automation workflows
+- Declarative desired state enforcement
+- Secure agent communication
+- Modular and extensible execution framework
+- API-first architecture
+- Built-in observability of nodes, tasks, and workflows
 
 ---
 
 ## Use Cases
 
-* Infrastructure automation at scale
-* Event-based remediation and self-healing systems
-* Application lifecycle orchestration
-* Hybrid and multi-environment operations
-* Operational workflows without brittle scripts
+- Infrastructure automation at scale
+- Event-based remediation and self-healing systems
+- Application lifecycle orchestration
+- Hybrid and multi-environment operations
+- Operational workflows without brittle scripts
 
 ---
 
 ## Project Structure
 
 ```
+
 fluxforge/
 ├ control_plane/    # Core control plane services
 ├ agent/            # Distributed agent runtime
 ├ modules/          # Execution modules (system, cloud, services)
-├ workflows/        # Workflow definitions and engine
+├ workflows/        # Workflow engine and definitions
 ├ providers/        # Infrastructure provider integrations
 ├ sdk/              # API clients and SDKs
 ├ docs/             # Architecture and design documentation
 ├ tests/            # Automated test suites
 └ tools/            # CLI and developer tooling
-```
+
+````
 
 ---
 
 ## Getting Started
 
-FluxForge is designed to be deployable locally for development and testing.
+FluxForge is designed to run locally for development and testing.
 
 ### Prerequisites
-
-* Docker
-* Docker Compose
-* Git
+- Docker
+- Docker Compose
+- Git
 
 ### Quick Start
 
@@ -127,9 +147,9 @@ FluxForge is designed to be deployable locally for development and testing.
 git clone https://github.com/itskum47/FluxForge.git
 cd FluxForge
 docker-compose up
-```
+````
 
-This starts a local control plane, event bus, and a sample agent.
+This will start a local control plane, event system, and a sample agent.
 
 ---
 
@@ -154,19 +174,22 @@ FluxForge is intentionally opinionated.
 
 ---
 
-## Status
+## Project Status
 
-FluxForge is under active development. APIs and internal components are evolving as the core architecture is finalized.
+FluxForge is under active development.
+Core architecture is being stabilized and APIs may evolve as the platform matures.
 
 ---
 
 ## Contributing
 
-Contributions, design discussions, and feedback are welcome.
+Design discussions, bug reports, and contributions are welcome.
 Please review the contribution guidelines before submitting changes.
 
 ---
 
 ## License
 
-Apache 2.0
+FluxForge is licensed under the Apache License, Version 2.0.
+
+```
