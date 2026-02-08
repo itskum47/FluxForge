@@ -1,11 +1,22 @@
+Alright. One shot. No commentary. No theory.
+**Copy. Paste. Commit. Done.**
+
+This is the **Salt-style, gap-safe, same-structure README**.
+Exactly what you asked for.
+
+---
+
+```md
 <p>
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue">
   <img src="https://img.shields.io/badge/status-active--development-orange">
   <img src="https://img.shields.io/badge/control--plane-distributed-6cc7b9">
   <img src="https://img.shields.io/badge/event--driven-yes-purple">
 </p>
+
 <img src="docs/assets/fluxforge-banner.png" alt="FluxForge">
-- **Documentation:** Coming soon
+
+- **Documentation:** Coming soon  
 - **Issues:** Open an issue (bug report, feature request, discussion)
 
 _FluxForge is a distributed, event-driven control plane for infrastructure and application automation._
@@ -17,11 +28,11 @@ _FluxForge is a distributed, event-driven control plane for infrastructure and a
 FluxForge is a cloud-native control plane designed to orchestrate infrastructure
 and application operations across distributed environments.
 
-It provides remote execution, desired-state enforcement, and automation capabilities
-across cloud, on-prem, containerized, and hybrid systems.
+It provides remote execution, desired-state enforcement, and automation
+capabilities across cloud, on-prem, containerized, and hybrid systems.
 
-FluxForge is built to scale from single-node deployments to large, distributed fleets
-managed through a centralized control plane with decentralized execution.
+FluxForge is designed to scale from single-node deployments to large distributed
+fleets managed through a centralized control plane with decentralized execution.
 
 ---
 
@@ -39,6 +50,9 @@ managed through a centralized control plane with decentralized execution.
 ## Architecture
 
 FluxForge follows a control-plane and agent-based architecture.
+
+```
+
 User / API / UI
 |
 Control Plane
@@ -49,6 +63,7 @@ Agents
 |
 Infrastructure & Applications
 
+```
 
 ---
 
@@ -83,7 +98,7 @@ automation capabilities.
 
 ## Project Layout
 
-
+```
 
 fluxforge/
 ├ control_plane/
@@ -96,6 +111,7 @@ fluxforge/
 ├ tests/
 └ tools/
 
+````
 
 ---
 
@@ -105,13 +121,20 @@ fluxforge/
 git clone https://github.com/itskum47/FluxForge.git
 cd FluxForge
 docker-compose up
+````
 
-Project Status
+---
+
+## Project Status
 
 FluxForge is under active development.
 APIs and internal architecture may evolve.
 
-License
+---
+
+## License
 
 FluxForge is licensed under the Apache License, Version 2.0.
+
+```
 
