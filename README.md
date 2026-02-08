@@ -4,9 +4,7 @@
   <img src="https://img.shields.io/badge/control--plane-distributed-6cc7b9">
   <img src="https://img.shields.io/badge/event--driven-yes-purple">
 </p>
-
 <img src="docs/assets/fluxforge-banner.png" alt="FluxForge">
-
 - **Documentation:** Coming soon  
 - **Issues:** Open an issue (bug report, feature request, discussion)
 
