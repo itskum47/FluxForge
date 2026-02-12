@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"fluxforge/control_plane/scheduler"
+	"github.com/itskum47/FluxForge/control_plane/scheduler"
 	"net/http"
 	"net/http/httptest"
 	"testing"

@@ -3,7 +3,7 @@ package scheduler
 import (
 	"context"
 	"errors"
-	"fluxforge/control_plane/timeline"
+	"github.com/itskum47/FluxForge/control_plane/timeline"
 	"testing"
 	"time"
 )

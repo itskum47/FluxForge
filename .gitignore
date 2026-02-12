@@ -1,8 +1,9 @@
 # Binaries
+# Binaries
 cp
 agent
-fluxforge/cp
-fluxforge/agent_bin
+bin/
+
 
 # Logs
 *.log
@@ -17,3 +18,4 @@ fluxforge/agent_bin
 
 # Temp
 tmp/
+.DS_Store

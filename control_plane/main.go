@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"fluxforge/control_plane/scheduler"
+	"github.com/itskum47/FluxForge/control_plane/scheduler"
 
 	"context"
 	"log"

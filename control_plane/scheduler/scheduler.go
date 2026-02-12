@@ -10,8 +10,8 @@ import (
 
 	"errors"
 
-	"fluxforge/control_plane/observability"
-	"fluxforge/control_plane/timeline"
+	"github.com/itskum47/FluxForge/control_plane/observability"
+	"github.com/itskum47/FluxForge/control_plane/timeline"
 )
 
 // ReconcilerInterface defines the contract for the actual reconciliation logic.

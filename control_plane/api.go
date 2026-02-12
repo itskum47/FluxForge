@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fluxforge/control_plane/scheduler"
+	"github.com/itskum47/FluxForge/control_plane/scheduler"
 
 	"encoding/json"
 	"log"
@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"fluxforge/control_plane/idempotency"
+	"github.com/itskum47/FluxForge/control_plane/idempotency"
 )
 
 type API struct {
