@@ -33,6 +33,7 @@ type Store struct {
 	mu     sync.RWMutex
 	agents map[string]*Agent
 	jobs   map[string]*Job
+	states map[string]*State
 }
 
 // NewStore initializes a new Store.
@@ -40,6 +41,7 @@ func NewStore() *Store {
 	return &Store{
 		agents: make(map[string]*Agent),
 		jobs:   make(map[string]*Job),
+		states: make(map[string]*State),
 	}
 }
 
@@ -111,4 +113,61 @@ func (s *Store) GetAgent(nodeID string) *Agent {
 	// Return copy
 	agentCopy := *a
 	return &agentCopy
+}
+
+// State represents a desired state for a node.
+type State struct {
+	StateID         string `json:"state_id"`
+	NodeID          string `json:"node_id"`
+	CheckCmd        string `json:"check_cmd"`
+	ApplyCmd        string `json:"apply_cmd"`
+	DesiredExitCode int    `json:"desired_exit_code"`
+	Status          string `json:"status"` // compliant, drifted, applying, failed, pending
+	LastChecked     int64  `json:"last_checked"`
+	LastError       string `json:"last_error"`
+}
+
+// UpsertState adds or updates a state in the store.
+func (s *Store) UpsertState(st *State) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.states[st.StateID] = st
+}
+
+// GetState retrieves a state by ID.
+func (s *Store) GetState(stateID string) *State {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	st, ok := s.states[stateID]
+	if !ok {
+		return nil
+	}
+	// Return copy
+	stateCopy := *st
+	return &stateCopy
+}
+
+// ListJobs returns a snapshot of all jobs.
+func (s *Store) ListJobs() []Job {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make([]Job, 0, len(s.jobs))
+	for _, j := range s.jobs {
+		result = append(result, *j)
+	}
+	return result
+}
+
+// ListStates returns a snapshot of all states.
+func (s *Store) ListStates() []State {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make([]State, 0, len(s.states))
+	for _, st := range s.states {
+		result = append(result, *st)
+	}
+	return result
 }

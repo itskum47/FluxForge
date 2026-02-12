@@ -37,16 +37,16 @@ func (e *Executor) Execute(jobID, command string) {
 
 	err := cmd.Run()
 	if err != nil {
-		status = "failed"
-
 		// Extract exit code if possible
 		if exitErr, ok := err.(*exec.ExitError); ok {
+			status = "completed" // Command ran, just failed exit code
 			if waitStatus, ok := exitErr.Sys().(syscall.WaitStatus); ok {
 				exitCode = waitStatus.ExitStatus()
 			} else {
 				exitCode = 1
 			}
 		} else {
+			status = "failed"
 			exitCode = 1
 			fmt.Fprintf(&stderr, "\nExecution error: %v", err)
 		}

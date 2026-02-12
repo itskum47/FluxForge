@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"time"
 )
 
-// Dispatcher handles job dispatching to agents.
+// Dispatcher is responsible for sending jobs to agents.
 type Dispatcher struct {
 	store *Store
 }
@@ -19,11 +18,13 @@ func NewDispatcher(store *Store) *Dispatcher {
 	return &Dispatcher{store: store}
 }
 
-// DispatchJob sends a job to the target agent.
-// It waits for the agent to accept the job (HTTP 202).
-// It updates the job status to "running" or "failed".
+// DispatchJob sends a job to the target agent for execution.
+// IMPORTANT:
+// - HTTP 202 Accepted = success (async execution)
+// - Job completion is reported later via /jobs/result
 func (d *Dispatcher) DispatchJob(agent *Agent, job *Job) {
-	// Construct payload
+	url := fmt.Sprintf("http://%s:%d/execute", agent.Address, agent.Port)
+
 	payload := map[string]string{
 		"job_id":  job.JobID,
 		"command": job.Command,
@@ -31,50 +32,32 @@ func (d *Dispatcher) DispatchJob(agent *Agent, job *Job) {
 
 	data, err := json.Marshal(payload)
 	if err != nil {
-		d.failJob(job, fmt.Sprintf("Failed to marshal job payload: %v", err))
+		job.Status = "failed"
+		job.Stderr = fmt.Sprintf("failed to marshal payload: %v", err)
+		d.store.UpsertJob(job)
 		return
 	}
 
-	// Construct URL
-	// Note: Agent is responsible for providing a valid address/port.
-	url := fmt.Sprintf("http://%s:%d/execute", agent.Address, agent.Port)
-
-	// Send request with short timeout for acceptance
-	client := &http.Client{
-		Timeout: 2 * time.Second,
-	}
-
-	resp, err := client.Post(url, "application/json", bytes.NewBuffer(data))
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(data))
 	if err != nil {
-		// Dispatch failure: Agent unreachable or network error
-		d.failJob(job, fmt.Sprintf("Failed to connect to agent: %v", err))
+		job.Status = "failed"
+		job.Stderr = fmt.Sprintf("failed to contact agent: %v", err)
+		d.store.UpsertJob(job)
 		return
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusConflict {
-		d.failJob(job, "Agent busy (Concurrency limit reached)")
-		return
-	}
-
+	// ✅ CORRECT SEMANTICS
 	if resp.StatusCode != http.StatusAccepted {
-		d.failJob(job, fmt.Sprintf("Agent rejected job with status: %d", resp.StatusCode))
+		job.Status = "failed"
+		job.Stderr = fmt.Sprintf("agent returned status %d", resp.StatusCode)
+		d.store.UpsertJob(job)
 		return
 	}
 
-	// Success: Mark as running
-	d.updateJobStatus(job, "running")
-	log.Printf("Job %s dispatched to %s (%s)", job.JobID, agent.NodeID, url)
-}
-
-func (d *Dispatcher) failJob(job *Job, reason string) {
-	log.Printf("Job %s dispatch failed: %s", job.JobID, reason)
-	job.Status = "failed"
-	job.Stderr = reason // Record dispatch error in stderr for visibility
+	// Job accepted for execution
+	job.Status = "running"
 	d.store.UpsertJob(job)
-}
 
-func (d *Dispatcher) updateJobStatus(job *Job, status string) {
-	job.Status = status
-	d.store.UpsertJob(job)
+	log.Printf("Job %s dispatched to agent %s", job.JobID, agent.NodeID)
 }

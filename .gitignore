@@ -1,0 +1,19 @@
+# Binaries
+cp
+agent
+fluxforge/cp
+fluxforge/agent_bin
+
+# Logs
+*.log
+*.out
+
+# Mac
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Temp
+tmp/
