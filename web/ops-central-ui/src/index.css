@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    body {
+        @apply bg-background-dark text-gray-300 min-h-screen flex flex-col font-display antialiased;
+    }
+}
+
+@layer components {
+    .glass-panel {
+        @apply bg-[#1f1833]/70 backdrop-blur-md border border-white/10;
+    }
+
+    .amber-glow {
+        box-shadow: 0 0 15px rgba(245, 158, 11, 0.15);
+    }
+}
+
+@layer utilities {
+    .grid-bg {
+        background-size: 40px 40px;
+        background-image:
+            linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    }
+
+    .scanline {
+        background: linear-gradient(to bottom, rgba(255, 59, 59, 0), rgba(255, 59, 59, 0.05) 50%, rgba(255, 59, 59, 0));
+        background-size: 100% 4px;
+        pointer-events: none;
+        position: absolute;
+        inset: 0;
+        z-index: 5;
+    }
+
+    /* Custom Scrollbar */
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+        background: #0B1220;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #334155;
+        border-radius: 3px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #475569;
+    }
+}
+
+/* Global Scrollbar Override */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: #0B1220;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+}

@@ -1,0 +1,236 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"sync/atomic"
+	"time"
+
+	"github.com/gorilla/mux"
+)
+
+// TestVersionRequest for version conflict hammer test
+type TestVersionRequest struct {
+	Key     string      `json:"key"`
+	Version int64       `json:"version"`
+	Value   interface{} `json:"value"`
+}
+
+// TestVersionResponse for version conflict hammer test
+type TestVersionResponse struct {
+	Success        bool   `json:"success"`
+	CurrentVersion int64  `json:"current_version"`
+	Message        string `json:"message"`
+}
+
+// IdempotencyTestMetrics tracks idempotency test results
+type IdempotencyTestMetrics struct {
+	TotalRequests   int64
+	Executions      int64
+	CachedResponses int64
+	Errors          int64
+}
+
+var idempotencyMetrics IdempotencyTestMetrics
+
+// RegisterTestEndpoints registers test endpoints for rapid validation
+func (a *API) RegisterTestEndpoints(r *mux.Router) {
+	// Version conflict hammer test endpoint
+	r.HandleFunc("/test/version", a.handleVersionTest).Methods("POST")
+	r.HandleFunc("/test/version/{key}", a.handleGetVersion).Methods("GET")
+	r.HandleFunc("/test/version/reset", a.handleResetVersionTest).Methods("POST")
+
+	// Idempotency metrics endpoint
+	r.HandleFunc("/test/idempotency/metrics", a.handleIdempotencyMetrics).Methods("GET")
+	r.HandleFunc("/test/idempotency/reset", a.handleResetIdempotencyMetrics).Methods("POST")
+
+	// Lock expiration test endpoint
+	r.HandleFunc("/test/lock/acquire", a.handleAcquireLock).Methods("POST")
+	r.HandleFunc("/test/lock/status/{key}", a.handleLockStatus).Methods("GET")
+	r.HandleFunc("/test/lock/crash", a.handleSimulateCrash).Methods("POST")
+}
+
+// handleVersionTest - CRITICAL: Version conflict hammer test
+// Tests atomic Lua enforcement under concurrent writes
+func (a *API) handleVersionTest(w http.ResponseWriter, r *http.Request) {
+	var req TestVersionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Use versioned Redis store
+	versionedValue := VersionedValue{
+		Value:     req.Value,
+		Version:   req.Version,
+		Timestamp: time.Now().Unix(),
+	}
+
+	// CRITICAL: This must use atomic Lua script
+	err := a.store.SetVersioned(r.Context(), req.Key, versionedValue, 0)
+
+	response := TestVersionResponse{
+		Success: err == nil,
+	}
+
+	if err != nil {
+		// Version conflict - get current version
+		existing, getErr := a.store.GetVersioned(r.Context(), req.Key)
+		if getErr == nil {
+			response.CurrentVersion = existing.Version
+			response.Message = fmt.Sprintf("Version conflict: current=%d, attempted=%d",
+				existing.Version, req.Version)
+		} else {
+			response.Message = err.Error()
+		}
+		w.WriteHeader(http.StatusConflict)
+	} else {
+		response.CurrentVersion = req.Version
+		response.Message = "Version set successfully"
+		w.WriteHeader(http.StatusOK)
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleGetVersion retrieves current version
+func (a *API) handleGetVersion(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	key := vars["key"]
+
+	value, err := a.store.GetVersioned(r.Context(), key)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	json.NewEncoder(w).Encode(value)
+}
+
+// handleResetVersionTest resets version test state
+func (a *API) handleResetVersionTest(w http.ResponseWriter, r *http.Request) {
+	// Delete all test keys
+	// This is a simplified version - production would need proper cleanup
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "reset"})
+}
+
+// handleIdempotencyMetrics returns idempotency test metrics
+func (a *API) handleIdempotencyMetrics(w http.ResponseWriter, r *http.Request) {
+	metrics := map[string]int64{
+		"total_requests":   atomic.LoadInt64(&idempotencyMetrics.TotalRequests),
+		"executions":       atomic.LoadInt64(&idempotencyMetrics.Executions),
+		"cached_responses": atomic.LoadInt64(&idempotencyMetrics.CachedResponses),
+		"errors":           atomic.LoadInt64(&idempotencyMetrics.Errors),
+	}
+
+	json.NewEncoder(w).Encode(metrics)
+}
+
+// handleResetIdempotencyMetrics resets metrics
+func (a *API) handleResetIdempotencyMetrics(w http.ResponseWriter, r *http.Request) {
+	atomic.StoreInt64(&idempotencyMetrics.TotalRequests, 0)
+	atomic.StoreInt64(&idempotencyMetrics.Executions, 0)
+	atomic.StoreInt64(&idempotencyMetrics.CachedResponses, 0)
+	atomic.StoreInt64(&idempotencyMetrics.Errors, 0)
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "reset"})
+}
+
+// handleAcquireLock - Lock expiration test
+func (a *API) handleAcquireLock(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Key string `json:"key"`
+		TTL int    `json:"ttl"` // seconds
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	ttl := time.Duration(req.TTL) * time.Second
+	acquired, err := a.store.AcquireLock(r.Context(), req.Key, ttl)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"acquired": acquired,
+		"key":      req.Key,
+		"ttl":      req.TTL,
+	}
+
+	if acquired {
+		w.WriteHeader(http.StatusOK)
+	} else {
+		w.WriteHeader(http.StatusConflict)
+		response["message"] = "Lock already held"
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleLockStatus checks lock status
+func (a *API) handleLockStatus(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	key := vars["key"]
+
+	state, err := a.store.GetIdempotencyState(r.Context(), key)
+
+	response := map[string]interface{}{
+		"key": key,
+	}
+
+	if err != nil {
+		response["status"] = "error"
+		response["error"] = err.Error()
+		w.WriteHeader(http.StatusInternalServerError)
+	} else if state == nil {
+		response["status"] = "no_lock"
+		w.WriteHeader(http.StatusOK)
+	} else {
+		response["status"] = string(state.State)
+		response["created_at"] = state.CreatedAt
+		w.WriteHeader(http.StatusOK)
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleSimulateCrash - Simulates process crash for testing
+func (a *API) handleSimulateCrash(w http.ResponseWriter, r *http.Request) {
+	// In production, this would trigger graceful shutdown
+	// For testing, we just log
+	fmt.Println("[TEST] Simulating crash - lock should expire automatically")
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Crash simulation triggered - lock will expire based on TTL",
+	})
+}
+
+// Middleware to track idempotency metrics
+func (a *API) trackIdempotencyMetrics(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		idempotencyKey := r.Header.Get("X-Flux-Idempotency-Key")
+
+		if idempotencyKey != "" {
+			atomic.AddInt64(&idempotencyMetrics.TotalRequests, 1)
+
+			// Check if this is a cached response
+			state, err := a.store.GetIdempotencyState(r.Context(), idempotencyKey)
+			if err == nil && state != nil && state.State == IdempotencyStateResult {
+				atomic.AddInt64(&idempotencyMetrics.CachedResponses, 1)
+			} else {
+				atomic.AddInt64(&idempotencyMetrics.Executions, 1)
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}

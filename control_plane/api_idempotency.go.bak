@@ -1,0 +1,206 @@
+package main
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"time"
+)
+
+// IdempotencyStore manages idempotency keys and cached responses
+type IdempotencyStore struct {
+	store Store // Redis-backed store
+}
+
+// IdempotencyRecord stores the cached response for an idempotent request
+type IdempotencyRecord struct {
+	Key        string            `json:"key"`
+	StatusCode int               `json:"status_code"`
+	Body       []byte            `json:"body"`
+	Headers    map[string]string `json:"headers"`
+	CreatedAt  time.Time         `json:"created_at"`
+	ExpiresAt  time.Time         `json:"expires_at"`
+}
+
+const (
+	idempotencyKeyHeader = "X-Flux-Idempotency-Key"
+	idempotencyTTL       = 24 * time.Hour
+)
+
+// NewIdempotencyStore creates a new idempotency store
+func NewIdempotencyStore(store Store) *IdempotencyStore {
+	return &IdempotencyStore{
+		store: store,
+	}
+}
+
+// CheckIdempotency checks if request has been processed before
+func (s *IdempotencyStore) CheckIdempotency(r *http.Request) (*IdempotencyRecord, bool) {
+	key := r.Header.Get(idempotencyKeyHeader)
+	if key == "" {
+		return nil, false
+	}
+
+	// Hash the key for storage
+	hashedKey := hashIdempotencyKey(key)
+
+	// Try to retrieve from store
+	data, err := s.store.GetIdempotencyRecord(hashedKey)
+	if err != nil {
+		return nil, false
+	}
+
+	var record IdempotencyRecord
+	if err := json.Unmarshal([]byte(data), &record); err != nil {
+		return nil, false
+	}
+
+	// Check if expired
+	if time.Now().After(record.ExpiresAt) {
+		return nil, false
+	}
+
+	return &record, true
+}
+
+// StoreIdempotency stores the response for future idempotent requests
+func (s *IdempotencyStore) StoreIdempotency(r *http.Request, statusCode int, body []byte, headers map[string]string) error {
+	key := r.Header.Get(idempotencyKeyHeader)
+	if key == "" {
+		return nil // No idempotency key, nothing to store
+	}
+
+	// Hash the key
+	hashedKey := hashIdempotencyKey(key)
+
+	// Create record
+	record := IdempotencyRecord{
+		Key:        hashedKey,
+		StatusCode: statusCode,
+		Body:       body,
+		Headers:    headers,
+		CreatedAt:  time.Now(),
+		ExpiresAt:  time.Now().Add(idempotencyTTL),
+	}
+
+	// Serialize
+	data, err := json.Marshal(record)
+	if err != nil {
+		return err
+	}
+
+	// Store with TTL
+	return s.store.SetIdempotencyRecord(hashedKey, string(data), idempotencyTTL)
+}
+
+// hashIdempotencyKey creates a SHA256 hash of the idempotency key
+func hashIdempotencyKey(key string) string {
+	hash := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(hash[:])
+}
+
+// IdempotencyMiddleware wraps handlers to support idempotency
+func IdempotencyMiddleware(store *IdempotencyStore, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Only apply to POST, PUT, PATCH, DELETE
+		if r.Method != http.MethodPost && r.Method != http.MethodPut &&
+			r.Method != http.MethodPatch && r.Method != http.MethodDelete {
+			next(w, r)
+			return
+		}
+
+		// Check for idempotency key
+		if r.Header.Get(idempotencyKeyHeader) == "" {
+			next(w, r)
+			return
+		}
+
+		// Check if already processed
+		record, found := store.CheckIdempotency(r)
+		if found {
+			// Return cached response
+			for k, v := range record.Headers {
+				w.Header().Set(k, v)
+			}
+			w.Header().Set("X-Flux-Idempotency-Replay", "true")
+			w.WriteHeader(record.StatusCode)
+			w.Write(record.Body)
+			return
+		}
+
+		// Capture response
+		recorder := &responseRecorder{
+			ResponseWriter: w,
+			statusCode:     http.StatusOK,
+			body:           []byte{},
+			headers:        make(map[string]string),
+		}
+
+		// Call next handler
+		next(recorder, r)
+
+		// Store response for future requests
+		store.StoreIdempotency(r, recorder.statusCode, recorder.body, recorder.headers)
+	}
+}
+
+// responseRecorder captures the response for idempotency storage
+type responseRecorder struct {
+	http.ResponseWriter
+	statusCode int
+	body       []byte
+	headers    map[string]string
+}
+
+func (r *responseRecorder) WriteHeader(statusCode int) {
+	r.statusCode = statusCode
+	r.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (r *responseRecorder) Write(body []byte) (int, error) {
+	r.body = append(r.body, body...)
+	return r.ResponseWriter.Write(body)
+}
+
+func (r *responseRecorder) Header() http.Header {
+	// Capture important headers
+	headers := r.ResponseWriter.Header()
+	for k, v := range headers {
+		if len(v) > 0 {
+			r.headers[k] = v[0]
+		}
+	}
+	return headers
+}
+
+// Example usage in API handlers:
+func (a *API) handleJobSubmitWithIdempotency(w http.ResponseWriter, r *http.Request) {
+	// This handler is automatically wrapped with IdempotencyMiddleware
+	// If the same idempotency key is sent again, the cached response is returned
+	// without re-executing the job submission
+
+	var req struct {
+		NodeID  string `json:"node_id"`
+		Command string `json:"command"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Submit job (will only execute once per idempotency key)
+	jobID, err := a.dispatcher.DispatchJob(req.NodeID, req.Command)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to dispatch job: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"job_id": jobID,
+		"status": "submitted",
+	})
+}

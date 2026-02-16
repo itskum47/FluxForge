@@ -47,6 +47,19 @@ func (s *Store) GetEvents(reqID string) []ReconcileEvent {
 	return results
 }
 
+func (s *Store) GetEventsByStateID(stateID string) []ReconcileEvent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []ReconcileEvent
+	for _, e := range s.events {
+		if e.Metadata != nil && e.Metadata["state_id"] == stateID {
+			results = append(results, e)
+		}
+	}
+	return results
+}
+
 // GetAllEvents returns specific range of events (simple implementation for debug snapshot)
 func (s *Store) GetAllEvents() []ReconcileEvent {
 	s.mu.RLock()

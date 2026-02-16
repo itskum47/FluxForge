@@ -90,3 +90,11 @@ func (q *ThreadSafeQueue) Len() int {
 	defer q.mu.Unlock()
 	return len(q.pq)
 }
+
+// PushDelayed pushes a task to the queue after a delay.
+// This is non-blocking.
+func (q *ThreadSafeQueue) PushDelayed(task *ReconciliationTask, delay time.Duration) {
+	time.AfterFunc(delay, func() {
+		q.Push(task)
+	})
+}

@@ -1,0 +1,59 @@
+/*
+package streaming
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/nats-io/nats.go"
+)
+
+type NATSClient struct {
+	nc *nats.Conn
+}
+
+func NewNATSClient(url string) (*NATSClient, error) {
+	nc, err := nats.Connect(url, nats.RetryOnFailedConnect(true), nats.MaxReconnects(-1))
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to NATS: %w", err)
+	}
+	return &NATSClient{nc: nc}, nil
+}
+
+func (n *NATSClient) Publish(ctx context.Context, topic string, payload interface{}) error {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	// Wrap in standard Event envelope? 
+    // Or send raw payload? Usually envelope is better.
+    // implementing simple raw publish for now or envelope if receivers expect it.
+    
+    // Using standard envelope
+	event := Event{
+		Topic:     topic,
+		Payload:   data,
+		Timestamp: time.Now(),
+		Source:    "control-plane",
+	}
+    
+    envelope, _ := json.Marshal(event)
+
+	if err := n.nc.Publish(topic, envelope); err != nil {
+		return fmt.Errorf("nats publish failed: %w", err)
+	}
+	return nil
+}
+
+func (n *NATSClient) Close() error {
+	n.nc.Drain()
+	n.nc.Close()
+	return nil
+}
+
+// Subscribe implementation...
+*/

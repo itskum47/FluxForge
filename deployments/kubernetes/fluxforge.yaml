@@ -1,0 +1,273 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fluxforge
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluxforge-config
+  namespace: fluxforge
+data:
+  DB_HOST: "postgres-service"
+  DB_PORT: "5432"
+  DB_NAME: "fluxforge"
+  LOG_LEVEL: "info"
+  RAFT_PORT: "9000"
+  API_PORT: "8080"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: fluxforge-secrets
+  namespace: fluxforge
+type: Opaque
+stringData:
+  DB_USER: "fluxforge"
+  DB_PASSWORD: "fluxforge_production_password_change_me"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: fluxforge
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: fluxforge
+spec:
+  serviceName: postgres-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:14-alpine
+        env:
+        - name: POSTGRES_DB
+          valueFrom:
+            configMapKeyRef:
+              name: fluxforge-config
+              key: DB_NAME
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: fluxforge-secrets
+              key: DB_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: fluxforge-secrets
+              key: DB_PASSWORD
+        ports:
+        - containerPort: 5432
+          name: postgres
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluxforge-control-plane
+  namespace: fluxforge
+spec:
+  selector:
+    app: fluxforge-control-plane
+  ports:
+    - name: api
+      port: 8080
+      targetPort: 8080
+    - name: raft
+      port: 9000
+      targetPort: 9000
+  clusterIP: None
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluxforge-api
+  namespace: fluxforge
+spec:
+  type: LoadBalancer
+  selector:
+    app: fluxforge-control-plane
+  ports:
+    - name: api
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: fluxforge-control-plane
+  namespace: fluxforge
+spec:
+  serviceName: fluxforge-control-plane
+  replicas: 3
+  selector:
+    matchLabels:
+      app: fluxforge-control-plane
+  template:
+    metadata:
+      labels:
+        app: fluxforge-control-plane
+    spec:
+      containers:
+      - name: control-plane
+        image: fluxforge/control-plane:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: NODE_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: CLUSTER_PEERS
+          value: "fluxforge-control-plane-0.fluxforge-control-plane:9000,fluxforge-control-plane-1.fluxforge-control-plane:9000,fluxforge-control-plane-2.fluxforge-control-plane:9000"
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: fluxforge-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: fluxforge-config
+              key: DB_PORT
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: fluxforge-config
+              key: DB_NAME
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: fluxforge-secrets
+              key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: fluxforge-secrets
+              key: DB_PASSWORD
+        - name: RAFT_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: fluxforge-config
+              key: RAFT_PORT
+        - name: API_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: fluxforge-config
+              key: API_PORT
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: fluxforge-config
+              key: LOG_LEVEL
+        ports:
+        - containerPort: 8080
+          name: api
+        - containerPort: 9000
+          name: raft
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluxforge-agent
+  namespace: fluxforge
+spec:
+  replicas: 10
+  selector:
+    matchLabels:
+      app: fluxforge-agent
+  template:
+    metadata:
+      labels:
+        app: fluxforge-agent
+    spec:
+      containers:
+      - name: agent
+        image: fluxforge/agent:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: NODE_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: CONTROL_PLANE
+          value: "http://fluxforge-api:8080"
+        - name: HEARTBEAT_INTERVAL
+          value: "10s"
+        - name: LOG_LEVEL
+          value: "info"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: fluxforge-control-plane-pdb
+  namespace: fluxforge
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: fluxforge-control-plane

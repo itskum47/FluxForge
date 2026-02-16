@@ -3,17 +3,25 @@ package scheduler
 import (
 	"context"
 	"errors"
-	"github.com/itskum47/FluxForge/control_plane/timeline"
 	"testing"
 	"time"
+
+	"github.com/itskum47/FluxForge/control_plane/store"
+	"github.com/itskum47/FluxForge/control_plane/timeline"
 )
+
+type MockStore struct{}
+
+func (m *MockStore) ListStatesByStatus(ctx context.Context, status string, shardIndex int, shardCount int) ([]*store.DesiredState, error) {
+	return nil, nil
+}
 
 type MockReconciler struct {
 	processed  []string
 	shouldFail bool
 }
 
-func (m *MockReconciler) Reconcile(stateID string) error {
+func (m *MockReconciler) Reconcile(ctx context.Context, stateID string) error {
 	m.processed = append(m.processed, stateID)
 	if m.shouldFail {
 		return errors.New("simulated failure")
@@ -22,8 +30,10 @@ func (m *MockReconciler) Reconcile(stateID string) error {
 }
 
 func TestSchedulerPriority(t *testing.T) {
-	mock := &MockReconciler{}
-	sched := NewScheduler(mock)
+	mockRec := &MockReconciler{}
+	mockStore := &MockStore{}
+	sched := NewScheduler(mockStore, mockRec, 0, 1, DefaultSchedulerConfig())
+	sched.RehydrateQueue(context.Background()) // Activate scheduler
 
 	// Submit Low Priority Task OLD (should have aged to be higher priority than recent Medium)
 	sched.Submit(&ReconciliationTask{
@@ -78,11 +88,13 @@ func TestQueueOrdering(t *testing.T) {
 }
 
 func TestNodeHealth(t *testing.T) {
-	mock := &MockReconciler{}
-	sched := NewScheduler(mock)
+	mockRec := &MockReconciler{}
+	mockStore := &MockStore{}
+	sched := NewScheduler(mockStore, mockRec, 0, 1, DefaultSchedulerConfig())
+	sched.RehydrateQueue(context.Background()) // Activate scheduler
 
 	// Set node as quarantined (score 0.0 < 0.4 threshold)
-	sched.UpdateNodeHealth("node-bad", "external", 0.0)
+	sched.UpdateNodeHealth("node-bad", "external", 0.0, "")
 
 	// Submit task for bad node
 	sched.Submit(&ReconciliationTask{
@@ -101,14 +113,16 @@ func TestNodeHealth(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Verify task was dropped (not processed)
-	if len(mock.processed) > 0 {
-		t.Errorf("Expected 0 processed tasks (quarantined), got %d", len(mock.processed))
+	if len(mockRec.processed) > 0 {
+		t.Errorf("Expected 0 processed tasks (quarantined), got %d", len(mockRec.processed))
 	}
 }
 
 func TestGetSnapshot(t *testing.T) {
-	mock := &MockReconciler{}
-	sched := NewScheduler(mock)
+	mockRec := &MockReconciler{}
+	mockStore := &MockStore{}
+	sched := NewScheduler(mockStore, mockRec, 0, 1, DefaultSchedulerConfig())
+	sched.RehydrateQueue(context.Background()) // Activate scheduler
 
 	sched.Submit(&ReconciliationTask{
 		ReqID:    "snap-1",
@@ -133,8 +147,10 @@ func TestGetSnapshot(t *testing.T) {
 }
 
 func TestSchedulerModes(t *testing.T) {
-	mock := &MockReconciler{}
-	sched := NewScheduler(mock)
+	mockRec := &MockReconciler{}
+	mockStore := &MockStore{}
+	sched := NewScheduler(mockStore, mockRec, 0, 1, DefaultSchedulerConfig())
+	sched.RehydrateQueue(context.Background()) // Activate scheduler
 
 	// Normal Mode
 	err := sched.Submit(&ReconciliationTask{Priority: 10, StateID: "ok"})

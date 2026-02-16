@@ -1,0 +1,213 @@
+package main
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"net/http"
+	"time"
+)
+
+// IdempotencyLockPattern implements the correct idempotency pattern
+// CRITICAL: Lock BEFORE execution, not after
+type IdempotencyLockPattern struct {
+	store IdempotencyStore
+}
+
+// IdempotencyStore interface for lock-based idempotency
+type IdempotencyStore interface {
+	// AcquireLock atomically acquires lock (SET NX)
+	AcquireLock(ctx context.Context, key string, ttl time.Duration) (bool, error)
+
+	// GetResult retrieves cached result
+	GetResult(ctx context.Context, key string) (*IdempotencyResult, error)
+
+	// StoreResult stores execution result
+	StoreResult(ctx context.Context, key string, result *IdempotencyResult, ttl time.Duration) error
+
+	// ReleaseLock releases the lock
+	ReleaseLock(ctx context.Context, key string) error
+}
+
+// IdempotencyResult represents cached execution result
+type IdempotencyResult struct {
+	StatusCode int               `json:"status_code"`
+	Body       []byte            `json:"body"`
+	Headers    map[string]string `json:"headers"`
+	CreatedAt  time.Time         `json:"created_at"`
+}
+
+const (
+	idempotencyKeyHeader = "X-Flux-Idempotency-Key"
+	idempotencyTTL       = 24 * time.Hour
+	lockTTL              = 30 * time.Second // Lock timeout
+)
+
+// ExecuteIdempotent executes request with idempotency lock pattern
+// CRITICAL: Acquires lock BEFORE execution
+func (i *IdempotencyLockPattern) ExecuteIdempotent(
+	ctx context.Context,
+	r *http.Request,
+	execute func(context.Context) (*IdempotencyResult, error),
+) (*IdempotencyResult, error) {
+
+	idempotencyKey := r.Header.Get(idempotencyKeyHeader)
+	if idempotencyKey == "" {
+		// No idempotency key, execute directly
+		return execute(ctx)
+	}
+
+	// Hash the idempotency key
+	hashedKey := hashIdempotencyKey(idempotencyKey)
+
+	// STEP 1: Check if result already exists
+	existing, err := i.store.GetResult(ctx, hashedKey)
+	if err == nil && existing != nil {
+		// Result already exists, return cached
+		return existing, nil
+	}
+
+	// STEP 2: CRITICAL - Acquire lock BEFORE execution
+	acquired, err := i.store.AcquireLock(ctx, hashedKey, lockTTL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to acquire idempotency lock: %w", err)
+	}
+
+	if !acquired {
+		// Another request is executing, wait and retry
+		return i.waitForResult(ctx, hashedKey)
+	}
+
+	// We acquired the lock, safe to execute
+	defer i.store.ReleaseLock(ctx, hashedKey)
+
+	// STEP 3: Double-check result (another request may have completed)
+	existing, err = i.store.GetResult(ctx, hashedKey)
+	if err == nil && existing != nil {
+		return existing, nil
+	}
+
+	// STEP 4: Execute request (only one request reaches here)
+	result, err := execute(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// STEP 5: Store result
+	err = i.store.StoreResult(ctx, hashedKey, result, idempotencyTTL)
+	if err != nil {
+		// Log error but return result (execution succeeded)
+		fmt.Printf("[IDEMPOTENCY] Failed to store result: %v\n", err)
+	}
+
+	return result, nil
+}
+
+// waitForResult waits for another request to complete and returns result
+func (i *IdempotencyLockPattern) waitForResult(ctx context.Context, key string) (*IdempotencyResult, error) {
+	// Poll for result with exponential backoff
+	backoff := 100 * time.Millisecond
+	maxBackoff := 2 * time.Second
+	timeout := 30 * time.Second
+
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		// Check if result is available
+		result, err := i.store.GetResult(ctx, key)
+		if err == nil && result != nil {
+			return result, nil
+		}
+
+		// Wait with backoff
+		time.Sleep(backoff)
+		backoff *= 2
+		if backoff > maxBackoff {
+			backoff = maxBackoff
+		}
+	}
+
+	return nil, errors.New("timeout waiting for idempotent request to complete")
+}
+
+// hashIdempotencyKey hashes the idempotency key
+func hashIdempotencyKey(key string) string {
+	hash := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(hash[:])
+}
+
+// Example usage in HTTP handler
+func exampleIdempotentHandler(w http.ResponseWriter, r *http.Request) {
+	lockPattern := &IdempotencyLockPattern{
+		store: nil, // Initialize with Redis store
+	}
+
+	result, err := lockPattern.ExecuteIdempotent(r.Context(), r, func(ctx context.Context) (*IdempotencyResult, error) {
+		// ACTUAL REQUEST EXECUTION HERE
+		// This code only runs once per idempotency key
+
+		// Example: Create job
+		// job, err := createJob(ctx, ...)
+
+		responseBody := []byte(`{"status": "created"}`)
+
+		return &IdempotencyResult{
+			StatusCode: http.StatusCreated,
+			Body:       responseBody,
+			Headers: map[string]string{
+				"Content-Type": "application/json",
+			},
+			CreatedAt: time.Now(),
+		}, nil
+	})
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Write response
+	for k, v := range result.Headers {
+		w.Header().Set(k, v)
+	}
+	w.WriteHeader(result.StatusCode)
+	w.Write(result.Body)
+}
+
+// RedisIdempotencyStore implements IdempotencyStore with Redis
+type RedisIdempotencyStore struct {
+	// Redis client
+}
+
+// AcquireLock implements atomic lock acquisition
+func (s *RedisIdempotencyStore) AcquireLock(ctx context.Context, key string, ttl time.Duration) (bool, error) {
+	// CRITICAL: Use SET NX to atomically acquire lock
+	// success := SETNX("lock:" + key, "LOCKED", ttl)
+	// return success, nil
+	return false, errors.New("not implemented")
+}
+
+// GetResult retrieves cached result
+func (s *RedisIdempotencyStore) GetResult(ctx context.Context, key string) (*IdempotencyResult, error) {
+	// result := GET("result:" + key)
+	// if result == nil { return nil, errors.New("not found") }
+	// return unmarshal(result), nil
+	return nil, errors.New("not found")
+}
+
+// StoreResult stores execution result
+func (s *RedisIdempotencyStore) StoreResult(ctx context.Context, key string, result *IdempotencyResult, ttl time.Duration) error {
+	// data := marshal(result)
+	// SET("result:" + key, data, ttl)
+	// return nil
+	return nil
+}
+
+// ReleaseLock releases the lock
+func (s *RedisIdempotencyStore) ReleaseLock(ctx context.Context, key string) error {
+	// DEL("lock:" + key)
+	// return nil
+	return nil
+}

@@ -2,19 +2,23 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"time"
+
+	"github.com/itskum47/FluxForge/control_plane/store"
 )
 
 // Dispatcher is responsible for sending jobs to agents.
 type Dispatcher struct {
-	store *Store
+	store store.Store
 }
 
 // NewDispatcher creates a new Dispatcher.
-func NewDispatcher(store *Store) *Dispatcher {
+func NewDispatcher(store store.Store) *Dispatcher {
 	return &Dispatcher{store: store}
 }
 
@@ -22,8 +26,15 @@ func NewDispatcher(store *Store) *Dispatcher {
 // IMPORTANT:
 // - HTTP 202 Accepted = success (async execution)
 // - Job completion is reported later via /jobs/result
-func (d *Dispatcher) DispatchJob(agent *Agent, job *Job) {
-	url := fmt.Sprintf("http://%s:%d/execute", agent.Address, agent.Port)
+func (d *Dispatcher) DispatchJob(ctx context.Context, agent *store.Agent, job *store.Job) {
+	// Check context before starting
+	if ctx.Err() != nil {
+		log.Printf("DispatchJob skipped: context cancelled (%v)", ctx.Err())
+		d.store.UpdateJobStatus(context.Background(), job.JobID, "failed", 0, "", "dispatch cancelled: leadership lost")
+		return
+	}
+
+	url := fmt.Sprintf("http://%s:%d/execute", agent.IPAddress, agent.Port)
 
 	payload := map[string]string{
 		"job_id":  job.JobID,
@@ -32,32 +43,35 @@ func (d *Dispatcher) DispatchJob(agent *Agent, job *Job) {
 
 	data, err := json.Marshal(payload)
 	if err != nil {
-		job.Status = "failed"
-		job.Stderr = fmt.Sprintf("failed to marshal payload: %v", err)
-		d.store.UpsertJob(job)
+		// Use UpdateJobStatus interface method
+		d.store.UpdateJobStatus(context.Background(), job.JobID, "failed", 0, "", fmt.Sprintf("failed to marshal payload: %v", err))
 		return
 	}
 
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(data))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(data))
 	if err != nil {
-		job.Status = "failed"
-		job.Stderr = fmt.Sprintf("failed to contact agent: %v", err)
-		d.store.UpsertJob(job)
+		d.store.UpdateJobStatus(context.Background(), job.JobID, "failed", 0, "", fmt.Sprintf("failed to create request: %v", err))
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Execute Request
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		d.store.UpdateJobStatus(context.Background(), job.JobID, "failed", 0, "", fmt.Sprintf("failed to contact agent: %v", err))
 		return
 	}
 	defer resp.Body.Close()
 
 	// ✅ CORRECT SEMANTICS
 	if resp.StatusCode != http.StatusAccepted {
-		job.Status = "failed"
-		job.Stderr = fmt.Sprintf("agent returned status %d", resp.StatusCode)
-		d.store.UpsertJob(job)
+		d.store.UpdateJobStatus(context.Background(), job.JobID, "failed", 0, "", fmt.Sprintf("agent returned status %d", resp.StatusCode))
 		return
 	}
 
 	// Job accepted for execution
-	job.Status = "running"
-	d.store.UpsertJob(job)
+	d.store.UpdateJobStatus(context.Background(), job.JobID, "running", 0, "", "")
 
 	log.Printf("Job %s dispatched to agent %s", job.JobID, agent.NodeID)
 }
