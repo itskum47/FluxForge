@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/itskum47/FluxForge/control_plane/observability"
 	"github.com/itskum47/FluxForge/control_plane/store"
 )
 
@@ -52,6 +53,7 @@ func (m *AgentMonitor) checkLiveness(ctx context.Context) {
 		return
 	}
 
+	activeCount := 0
 	now := time.Now()
 	for _, agent := range agents {
 		// Debug Log
@@ -70,6 +72,11 @@ func (m *AgentMonitor) checkLiveness(ctx context.Context) {
 			if err := m.store.UpsertAgent(ctx, agent.TenantID, agent); err != nil {
 				log.Printf("AgentMonitor: Failed to mark agent %s offline: %v", agent.NodeID, err)
 			}
+		} else {
+			// Count active agents
+			activeCount++
 		}
 	}
+	// Update Metric
+	observability.ConnectedAgents.Set(float64(activeCount))
 }

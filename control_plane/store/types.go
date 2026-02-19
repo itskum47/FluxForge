@@ -17,6 +17,7 @@ type Agent struct {
 	UpdatedAt     time.Time         `json:"updated_at" db:"updated_at"`
 	Metadata      map[string]string `json:"metadata" db:"metadata"` // JSONB in Postgres
 	Port          int               `json:"port" db:"port"`
+	Tier          string            `json:"tier" db:"tier"` // "standard", "premium", "dedicated"
 }
 
 // Job represents an execution task history.

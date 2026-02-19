@@ -170,11 +170,11 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 
-	http.Handle("/agent/register", middleware.TenantMiddleware(http.HandlerFunc(api.handleRegister)))
-	http.Handle("/agent/heartbeat", middleware.TenantMiddleware(http.HandlerFunc(api.handleHeartbeat)))
-	http.Handle("/agents", middleware.TenantMiddleware(http.HandlerFunc(api.handleListAgents)))
+	http.Handle("/agent/register", middleware.AuthMiddleware(http.HandlerFunc(api.handleRegister)))
+	http.Handle("/agent/heartbeat", middleware.AuthMiddleware(http.HandlerFunc(api.handleHeartbeat)))
+	http.Handle("/agents", middleware.AuthMiddleware(http.HandlerFunc(api.handleListAgents)))
 
-	http.Handle("/jobs", middleware.TenantMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	http.Handle("/jobs", middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			api.handleListJobs(w, r)
 			return
@@ -182,17 +182,17 @@ func main() {
 		// Wrap with idempotency for POST
 		api.withIdempotency(api.handleSubmitJob)(w, r)
 	})))
-	http.Handle("/jobs/", middleware.TenantMiddleware(http.HandlerFunc(api.handleGetJob)))
-	http.Handle("/jobs/result", middleware.TenantMiddleware(http.HandlerFunc(api.handleJobResult)))
+	http.Handle("/jobs/", middleware.AuthMiddleware(http.HandlerFunc(api.handleGetJob)))
+	http.Handle("/jobs/result", middleware.AuthMiddleware(http.HandlerFunc(api.handleJobResult)))
 
-	http.Handle("/states", middleware.TenantMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	http.Handle("/states", middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			api.handleListStates(w, r)
 			return
 		}
 		api.withIdempotency(api.handleCreateState)(w, r)
 	})))
-	http.Handle("/states/", middleware.TenantMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	http.Handle("/states/", middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost &&
 			len(r.URL.Path) > len("/states/") &&
 			r.URL.Path[len(r.URL.Path)-len("/reconcile"):] == "/reconcile" {
@@ -207,7 +207,7 @@ func main() {
 	})))
 
 	// Incident Management (Phase 6)
-	http.Handle("/incident/capture", middleware.TenantMiddleware(http.HandlerFunc(api.handleCaptureIncident)))
+	http.Handle("/incident/capture", middleware.AuthMiddleware(http.HandlerFunc(api.handleCaptureIncident)))
 
 	// Metrics Endpoint
 	http.Handle("/metrics", promhttp.Handler())
@@ -223,16 +223,16 @@ func main() {
 	http.HandleFunc("/admin/admission-mode", api.handleSetAdmissionMode)
 
 	// Phase 6: Dashboard API
-	http.Handle("/api/dashboard", middleware.TenantMiddleware(http.HandlerFunc(api.handleGetDashboard)))
-	http.Handle("/api/dashboard/stream", middleware.TenantMiddleware(http.HandlerFunc(api.handleDashboardStream)))
+	http.Handle("/api/dashboard", middleware.AuthMiddleware(http.HandlerFunc(api.handleGetDashboard)))
+	http.Handle("/api/dashboard/stream", middleware.AuthMiddleware(http.HandlerFunc(api.handleDashboardStream)))
 
 	// Phase 6.3: Incident Replay
-	http.Handle("/api/incidents", middleware.TenantMiddleware(http.HandlerFunc(api.handleListIncidents)))
-	http.Handle("/api/incidents/replay/", middleware.TenantMiddleware(http.HandlerFunc(api.handleReplayIncident)))
-	http.Handle("/api/incidents/capture", middleware.TenantMiddleware(http.HandlerFunc(api.handleCaptureIncidentSnapshot)))
+	http.Handle("/api/incidents", middleware.AuthMiddleware(http.HandlerFunc(api.handleListIncidents)))
+	http.Handle("/api/incidents/replay/", middleware.AuthMiddleware(http.HandlerFunc(api.handleReplayIncident)))
+	http.Handle("/api/incidents/capture", middleware.AuthMiddleware(http.HandlerFunc(api.handleCaptureIncidentSnapshot)))
 
 	// Phase 6.4: Multi-Cluster
-	http.Handle("/api/clusters", middleware.TenantMiddleware(http.HandlerFunc(api.handleGetClusters)))
+	http.Handle("/api/clusters", middleware.AuthMiddleware(http.HandlerFunc(api.handleGetClusters)))
 
 	// Startup Banner (Phase 6.1: Pilot Mode)
 	fmt.Println("==================================================")
@@ -286,14 +286,14 @@ func runMetricsCollector(ctx context.Context, s store.Store) {
 			// We'll set it to pending + drifted.
 			totalPending := float64(pending + drifted)
 
-			observability.DBPendingStates.Set(totalPending)
+			observability.DBPendingStates.WithLabelValues("default").Set(totalPending)
 			// 2. Integrity Skew (Silent Success Detector)
 			// Simple heuristic: If drifted > pending * 2, suggests we are processing but failing to converge?
 			// Real skew requires audit. For now, we allow external alerting on 'drifted' being high.
 			// But user asked for "submitted vs completed".
 			// We can track this coarsely.
 			// Let's just emit 'drifted' as the Skew proxy for now.
-			observability.IntegritySkew.Set(float64(drifted))
+			observability.IntegritySkew.WithLabelValues("default").Set(float64(drifted))
 		}
 	}
 }

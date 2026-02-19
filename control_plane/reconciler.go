@@ -61,7 +61,7 @@ func (r *Reconciler) IsAgentBusy(nodeID string) bool {
 
 // Reconcile runs the full reconciliation loop for a state.
 // This is the entry point that enforces the hard timeout kill switch.
-func (r *Reconciler) Reconcile(ctx context.Context, stateID string) error {
+func (r *Reconciler) Reconcile(ctx context.Context, tenantID string, stateID string) error {
 	// Hard timeout kill switch (Defense Layer 1: Reconciler)
 	taskCtx, cancel := context.WithTimeout(ctx, r.maxTaskRuntime)
 	defer cancel()
@@ -86,17 +86,17 @@ func (r *Reconciler) Reconcile(ctx context.Context, stateID string) error {
 		}
 	}()
 
-	return r.reconcileWithContext(taskCtx, stateID)
+	return r.reconcileWithContext(taskCtx, tenantID, stateID)
 }
 
 // reconcileWithContext performs the actual reconciliation work with timeout enforcement.
-func (r *Reconciler) reconcileWithContext(ctx context.Context, stateID string) (err error) {
+func (r *Reconciler) reconcileWithContext(ctx context.Context, tenantID string, stateID string) (err error) {
 	// Cooperative Cancellation Check
 	if ctx.Err() != nil {
 		return fmt.Errorf("reconciliation cancelled: %w", ctx.Err())
 	}
 
-	state, err := r.store.GetState(ctx, stateID)
+	state, err := r.store.GetState(ctx, tenantID, stateID)
 	if err != nil {
 		log.Printf("Reconcile failed: error getting state %s: %v", stateID, err)
 		observability.TaskRetries.Inc()
@@ -140,7 +140,7 @@ func (r *Reconciler) reconcileWithContext(ctx context.Context, stateID string) (
 		return fmt.Errorf("reconciliation cancelled: %w", ctx.Err())
 	}
 
-	agent, err := r.store.GetAgent(ctx, state.NodeID)
+	agent, err := r.store.GetAgent(ctx, state.TenantID, state.NodeID)
 	if err != nil {
 		log.Printf("Reconcile failed: error getting agent %s: %v", state.NodeID, err)
 		return err
@@ -255,12 +255,13 @@ func (r *Reconciler) executeJob(ctx context.Context, agent *store.Agent, command
 	job := &store.Job{
 		JobID:     jobID,
 		NodeID:    agent.NodeID,
+		TenantID:  agent.TenantID, // Ensure tenant ID is propagated
 		Command:   command,
 		Status:    "queued",
 		CreatedAt: time.Now(),
 	}
 
-	if err := r.store.CreateJob(ctx, job); err != nil {
+	if err := r.store.CreateJob(ctx, agent.TenantID, job); err != nil {
 		return -1, fmt.Errorf("failed to create job: %v", err)
 	}
 
@@ -271,11 +272,11 @@ func (r *Reconciler) executeJob(ctx context.Context, agent *store.Agent, command
 	// Job state is the source of truth.
 	r.dispatcher.DispatchJob(ctx, agent, job)
 
-	return r.waitForJob(ctx, jobID)
+	return r.waitForJob(ctx, agent.TenantID, jobID)
 }
 
 // waitForJob polls until the job completes or fails.
-func (r *Reconciler) waitForJob(ctx context.Context, jobID string) (int, error) {
+func (r *Reconciler) waitForJob(ctx context.Context, tenantID string, jobID string) (int, error) {
 	timeout := time.After(30 * time.Second)
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
@@ -287,7 +288,7 @@ func (r *Reconciler) waitForJob(ctx context.Context, jobID string) (int, error) 
 
 		case <-ticker.C:
 			// Pass context
-			job, err := r.store.GetJob(ctx, jobID)
+			job, err := r.store.GetJob(ctx, tenantID, jobID)
 			if err != nil {
 				return -1, fmt.Errorf("error getting job %s: %v", jobID, err)
 			}
@@ -312,7 +313,7 @@ func (r *Reconciler) updateStatus(ctx context.Context, state *store.DesiredState
 	state.Status = status
 	state.LastError = lastError
 
-	err := r.store.UpdateStateStatus(ctx, state.StateID, status, lastError, state.LastChecked, state.Version)
+	err := r.store.UpdateStateStatus(ctx, state.TenantID, state.StateID, status, lastError, state.LastChecked, state.Version)
 	if err != nil {
 		log.Printf("Failed to update status for state %s: %v", state.StateID, err)
 		// If CAS failed, we should arguably stop reconciliation.
@@ -350,7 +351,7 @@ func (r *Reconciler) publishEventAsync(state *store.DesiredState, status string,
 		// Log error but DO NOT fail reconciliation
 		// Events are for observability, not control flow
 		log.Printf("⚠️ Event publish failed (non-critical): %v", err)
-		observability.EventPublishFailures.WithLabelValues("state.transition").Inc()
+		observability.EventPublishFailures.WithLabelValues("state.transition", "publish_error").Inc()
 	}
 }
 

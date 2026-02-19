@@ -1,0 +1,95 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluxforge-control-headless
+  namespace: fluxforge
+spec:
+  ports:
+    - port: 9000
+      name: raft
+    - port: 8080
+      name: api
+  clusterIP: None
+  selector:
+    app: fluxforge-control
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluxforge-control
+  namespace: fluxforge
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: api
+  selector:
+    app: fluxforge-control
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: fluxforge-control
+  namespace: fluxforge
+spec:
+  serviceName: fluxforge-control-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: fluxforge-control
+  template:
+    metadata:
+      labels:
+        app: fluxforge-control
+    spec:
+      containers:
+        - name: control-plane
+          image: fluxforge-control:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: CLUSTER_PEERS
+              value: "fluxforge-control-0.fluxforge-control-headless:9000,fluxforge-control-1.fluxforge-control-headless:9000,fluxforge-control-2.fluxforge-control-headless:9000"
+            - name: REDIS_ADDR
+              value: "fluxforge-redis:6379"
+            - name: DB_HOST
+              value: "fluxforge-postgres"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "fluxforge"
+            - name: DB_USER
+              value: "fluxforge"
+            - name: DB_PASSWORD
+              value: "fluxforge_dev_password"
+            - name: RAFT_PORT
+              value: "9000"
+            - name: API_PORT
+              value: "8080"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secret
+                  key: JWT_SECRET
+          ports:
+            - containerPort: 8080
+              name: api
+            - containerPort: 9000
+              name: raft
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5

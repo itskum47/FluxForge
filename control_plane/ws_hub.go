@@ -90,7 +90,11 @@ func (h *MetricsHub) broadcastAll(ctx context.Context) {
 	}
 
 	for tenantID := range tenants {
-		metrics := h.api.collectDashboardMetrics(ctx, tenantID)
+		metrics, err := h.api.dashboardService.GetDashboardMetrics(ctx, tenantID)
+		if err != nil {
+			log.Printf("Failed to collect metrics for tenant %s: %v", tenantID, err)
+			continue
+		}
 
 		// Send to clients of this tenant
 		for conn, tid := range h.clients {

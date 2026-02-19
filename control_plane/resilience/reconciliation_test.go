@@ -153,7 +153,7 @@ func TestLeaderEpochValidation(t *testing.T) {
 			}, nil
 		}
 
-		coordinator := NewReconciliationCoordinator(degradedMode, mockRedis, getLeaderInfo)
+		coordinator := NewReconciliationCoordinator(degradedMode, mockRedis, getLeaderInfo, "node-1")
 
 		// Node becomes leader at epoch 5
 		coordinator.UpdateLeadershipStatus(5, "node-1", true)

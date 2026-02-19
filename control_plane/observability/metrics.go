@@ -126,10 +126,10 @@ var (
 
 	// DBPendingStates tracks the number of pending states in the DB.
 	// Used to detect Queue vs DB skew (checking for lost updates).
-	DBPendingStates = promauto.NewGauge(prometheus.GaugeOpts{
+	DBPendingStates = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "flux_db_pending_states",
 		Help: "Current number of pending states in the database",
-	})
+	}, []string{"tenant"})
 
 	// SchedulerAdmissionWaitSeconds tracks time tasks wait in the internal queue.
 	// Used for Backpressure visibility.
@@ -146,10 +146,10 @@ var (
 		Help: "Current runtime mode configuration (1 = active)",
 	}, []string{"mode"})
 
-	IntegritySkew = promauto.NewGauge(prometheus.GaugeOpts{
+	IntegritySkew = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "flux_integrity_skew_count",
 		Help: "Detected count of tasks submitted but lost/unaccounted for (Silent Success Detector)",
-	})
+	}, []string{"tenant"})
 
 	// === High-Value Observability Metrics ===
 
@@ -217,5 +217,11 @@ var (
 	IdempotencyLockExpired = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "flux_idempotency_lock_expired_total",
 		Help: "Total number of idempotency locks that expired",
+	})
+
+	// ConnectedAgents tracks the number of currently connected agents
+	ConnectedAgents = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "flux_connected_agents",
+		Help: "Current number of connected agents",
 	})
 )

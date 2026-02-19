@@ -21,7 +21,7 @@ type MockReconciler struct {
 	shouldFail bool
 }
 
-func (m *MockReconciler) Reconcile(ctx context.Context, stateID string) error {
+func (m *MockReconciler) Reconcile(ctx context.Context, tenantID string, stateID string) error {
 	m.processed = append(m.processed, stateID)
 	if m.shouldFail {
 		return errors.New("simulated failure")

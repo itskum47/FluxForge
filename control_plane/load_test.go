@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/itskum47/FluxForge/control_plane/idempotency"
+	"github.com/itskum47/FluxForge/control_plane/middleware"
 	"github.com/itskum47/FluxForge/control_plane/scheduler"
 	"github.com/itskum47/FluxForge/control_plane/store"
 	"github.com/itskum47/FluxForge/control_plane/streaming"
@@ -35,10 +36,16 @@ func TestLoadSimulation_10kAgents(t *testing.T) {
 	defer cancel()
 	go sched.Start(ctx)
 
-	api := NewAPI(s, dispatcher, reconciler, sched, idempotency.NewStore(nil))
+	api := NewAPI(s, dispatcher, reconciler, sched, nil, idempotency.NewStore(nil))
 
 	// 2. Create Test Server
-	server := httptest.NewServer(http.HandlerFunc(api.handleHeartbeat))
+	// Wrap handler to inject TenantID (simulating middleware)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify header or just inject context? Load test uses simple client.Post which doesn't send headers easily.
+		// So we force inject context.
+		ctx := context.WithValue(r.Context(), middleware.TenantKey, "default")
+		api.handleHeartbeat(w, r.WithContext(ctx))
+	}))
 	defer server.Close()
 
 	// 3. Flood Simulation
@@ -51,7 +58,7 @@ func TestLoadSimulation_10kAgents(t *testing.T) {
 	for b := 0; b < numBatches; b++ {
 		for i := 0; i < batchSize; i++ {
 			nodeID := fmt.Sprintf("agent-%d-%d", b, i)
-			s.UpsertAgent(context.Background(), &store.Agent{
+			s.UpsertAgent(context.Background(), "default", &store.Agent{
 				NodeID:        nodeID,
 				Status:        "active",
 				LastHeartbeat: time.Now(),

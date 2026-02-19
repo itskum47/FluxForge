@@ -18,7 +18,7 @@ import (
 // ReconcilerInterface defines the contract for the actual reconciliation logic.
 // The scheduler calls this to execute a task.
 type ReconcilerInterface interface {
-	Reconcile(ctx context.Context, stateID string) error
+	Reconcile(ctx context.Context, tenantID string, stateID string) error
 }
 
 var ErrQueueFull = errors.New("scheduler queue is full")
@@ -573,7 +573,7 @@ func (s *Scheduler) processNextTask(ctx context.Context) {
 		}
 
 		// Pass the scheduler context (fenced) to the reconciler
-		err = s.reconciler.Reconcile(ctx, task.StateID)
+		err = s.reconciler.Reconcile(ctx, task.TenantID, task.StateID)
 
 		stage := "FINISHED"
 		meta := make(map[string]string)

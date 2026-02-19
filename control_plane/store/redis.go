@@ -279,7 +279,13 @@ func (s *RedisStore) GetAgent(ctx context.Context, tenantID string, nodeID strin
 
 func (s *RedisStore) ListAgents(ctx context.Context, tenantID string) ([]*Agent, error) {
 	// Scan specific tenant namespace
-	match := TenantPrefix(tenantID, ResourceAgent) + "*"
+	var match string
+	if tenantID == "" {
+		// Cross-tenant search (Used by AgentMonitor)
+		match = TenantWildcardPrefix(ResourceAgent)
+	} else {
+		match = TenantPrefix(tenantID, ResourceAgent) + "*"
+	}
 	iter := s.client.Scan(ctx, 0, match, 0).Iterator()
 	var agents []*Agent
 	for iter.Next(ctx) {
@@ -310,23 +316,122 @@ func (s *RedisStore) UpdateAgentHeartbeat(ctx context.Context, tenantID string, 
 
 func (s *RedisStore) UpsertState(ctx context.Context, tenantID string, state *DesiredState) error {
 	state.TenantID = tenantID
-	return errors.New("RedisStore.UpsertState not implemented")
+	key := TenantKey(tenantID, ResourceState, state.StateID)
+
+	// Optimistic Locking: Read existing version
+	current, err := s.GetVersioned(ctx, key)
+	var newVersion int64 = 1
+	if err == nil {
+		newVersion = current.Version + 1
+	} else if err.Error() != "not found" {
+		return err
+	}
+	state.Version = int(newVersion)
+	state.UpdatedAt = time.Now()
+
+	val := VersionedValue{
+		Value:     state,
+		Version:   newVersion,
+		Timestamp: time.Now().Unix(),
+	}
+
+	return s.SetVersioned(ctx, key, val, 0)
 }
 
 func (s *RedisStore) UpdateStateStatus(ctx context.Context, tenantID string, stateID string, status string, lastError string, lastChecked time.Time, expectedVersion int) error {
-	return errors.New("RedisStore.UpdateStateStatus not implemented")
+	key := TenantKey(tenantID, ResourceState, stateID)
+
+	// Read-Modify-Write loop or CAS
+	// For simplicity in this certification, we read then CAS
+	current, err := s.GetState(ctx, tenantID, stateID)
+	if err != nil {
+		return err
+	}
+	if current == nil {
+		return fmt.Errorf("state not found")
+	}
+
+	if expectedVersion > 0 && current.Version != expectedVersion {
+		return fmt.Errorf("version mismatch")
+	}
+
+	current.Status = status
+	current.LastError = lastError
+	current.LastChecked = lastChecked
+	current.Version++
+	current.UpdatedAt = time.Now()
+
+	val := VersionedValue{
+		Value:     current,
+		Version:   int64(current.Version),
+		Timestamp: time.Now().Unix(),
+	}
+
+	statusOk, err := s.CompareAndSetVersioned(ctx, key, int64(current.Version-1), val, 0)
+	if err != nil {
+		return err
+	}
+	if !statusOk {
+		return fmt.Errorf("concurrent modification")
+	}
+	return nil
 }
 
 func (s *RedisStore) GetState(ctx context.Context, tenantID string, stateID string) (*DesiredState, error) {
-	return nil, errors.New("RedisStore.GetState not implemented")
+	key := TenantKey(tenantID, ResourceState, stateID)
+	vVal, err := s.GetVersioned(ctx, key)
+	if err != nil {
+		if err.Error() == "not found" {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// The Value inside VersionedValue is interface{} which might be map[string]interface{} after unmarshal
+	// Double unmarshal is safer or type assertion if known.
+	// Since GetVersioned unmarshals to interface{}, it's likely a map.
+	// We should re-marshal and unmarshal or use mapstructure.
+	// HACK: Re-marshal to JSON then Unmarshal to DesiredState
+	data, _ := json.Marshal(vVal.Value)
+	var state DesiredState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return nil, err
+	}
+	return &state, nil
 }
 
 func (s *RedisStore) GetStateByNode(ctx context.Context, tenantID string, nodeID string) (*DesiredState, error) {
-	return nil, errors.New("RedisStore.GetStateByNode not implemented")
+	// Inefficient Scan - acceptable for MVP/Certification
+	states, err := s.ListStates(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	for _, state := range states {
+		if state.NodeID == nodeID {
+			return state, nil
+		}
+	}
+	return nil, nil
 }
 
 func (s *RedisStore) ListStates(ctx context.Context, tenantID string) ([]*DesiredState, error) {
-	return nil, errors.New("RedisStore.ListStates not implemented")
+	match := TenantPrefix(tenantID, ResourceState) + "*"
+	iter := s.client.Scan(ctx, 0, match, 0).Iterator()
+	var states []*DesiredState
+
+	for iter.Next(ctx) {
+		key := iter.Val()
+		vVal, err := s.GetVersioned(ctx, key)
+		if err != nil {
+			continue
+		}
+		data, _ := json.Marshal(vVal.Value)
+		var state DesiredState
+		if err := json.Unmarshal(data, &state); err == nil {
+			states = append(states, &state)
+		}
+	}
+	return states, iter.Err()
 }
 
 // ListStatesByStatus returns all states with the given status, filtered by shard
@@ -335,8 +440,8 @@ func (s *RedisStore) ListStatesByStatus(ctx context.Context, status string, shar
 		return nil, errors.New("shardCount must be > 0")
 	}
 
-	// Global scan of all tenant states: fluxforge:tenants:*:states:*
-	match := "fluxforge:tenants:*:states:*"
+	// Global scan of all tenant states using helper
+	match := TenantWildcardPrefix(ResourceState)
 	iter := s.client.Scan(ctx, 0, match, 0).Iterator()
 	var states []*DesiredState
 
@@ -357,14 +462,14 @@ func (s *RedisStore) ListStatesByStatus(ctx context.Context, status string, shar
 			continue // Skip if not owned by this shard
 		}
 
-		// 3. Get State and filter by Status
-		// Note: We need GetState logic here but GetState is stubbed.
-		// So we assume we can GET directly using the key.
-		data, err := s.client.Get(ctx, key).Bytes()
+		// 3. Get Versioned State
+		vVal, err := s.GetVersioned(ctx, key)
 		if err != nil {
 			log.Printf("ListStatesByStatus: Failed to get state %s: %v", stateID, err)
 			continue
 		}
+
+		data, _ := json.Marshal(vVal.Value)
 		var state DesiredState
 		if err := json.Unmarshal(data, &state); err != nil {
 			continue
@@ -388,18 +493,20 @@ func (s *RedisStore) CountStatesByStatus(ctx context.Context, tenantID string, s
 	iter := s.client.Scan(ctx, 0, match, 0).Iterator()
 	count := 0
 	for iter.Next(ctx) {
-		// We need to check the status inside the value
-		// Only counting keys is not enough if we filter by status.
-		// Optimization: If status is "", count all?
-		// For dashboard, we usually want "pending", "drifted".
-		val, err := s.client.Get(ctx, iter.Val()).Bytes()
+		key := iter.Val()
+
+		// Get Versioned State
+		vVal, err := s.GetVersioned(ctx, key)
 		if err != nil {
 			continue
 		}
+
+		data, _ := json.Marshal(vVal.Value)
 		var state DesiredState
-		if err := json.Unmarshal(val, &state); err != nil {
+		if err := json.Unmarshal(data, &state); err != nil {
 			continue
 		}
+
 		if state.Status == status {
 			count++
 		}

@@ -47,6 +47,7 @@ services:
     container_name: fluxforge-control-1
     environment:
       NODE_ID: control-1
+      JWT_SECRET: "insecure_default_secret_for_dev_mode_only_32bytes"
       CLUSTER_PEERS: control-1:9000,control-2:9000,control-3:9000
       REDIS_ADDR: redis:6379
       DB_HOST: postgres
@@ -79,6 +80,7 @@ services:
     container_name: fluxforge-control-2
     environment:
       NODE_ID: control-2
+      JWT_SECRET: "insecure_default_secret_for_dev_mode_only_32bytes"
       CLUSTER_PEERS: control-1:9000,control-2:9000,control-3:9000
       REDIS_ADDR: redis:6379
       DB_HOST: postgres
@@ -111,6 +113,7 @@ services:
     container_name: fluxforge-control-3
     environment:
       NODE_ID: control-3
+      JWT_SECRET: "insecure_default_secret_for_dev_mode_only_32bytes"
       CLUSTER_PEERS: control-1:9000,control-2:9000,control-3:9000
       REDIS_ADDR: redis:6379
       DB_HOST: postgres
@@ -140,9 +143,11 @@ services:
     image: nginx:alpine
     container_name: fluxforge-lb
     ports:
-      - "8090:8080"
+      - "8090:8080" # HTTP Redirect (External)
+      - "8443:443" # HTTPS (External)
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
     depends_on:
       - control-1
       - control-2
@@ -157,9 +162,13 @@ services:
     environment:
       NODE_ID: agent-${AGENT_ID:-1}
       FLUX_TENANT_ID: ${FLUX_TENANT_ID:-default}
-      CONTROL_PLANE_URL: http://fluxforge-lb:8080
+      CONTROL_PLANE_URL: https://fluxforge-lb:443
       HEARTBEAT_INTERVAL: 10s
       LOG_LEVEL: info
+      SSL_CERT_FILE: /etc/ssl/fluxforge.crt
+      FLUX_AGENT_TOKEN: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0ZW5hbnRfaWQiOiJkZWZhdWx0Iiwicm9sZSI6ImFnZW50Iiwic3ViIjoiYWdlbnQtMSIsImlzcyI6ImZsdXhmb3JnZSIsImF1ZCI6ImZsdXhmb3JnZS1hcGkiLCJleHAiOjIwODY3NTQwNjUsImlhdCI6MTc3MTM5NDA2NSwibmJmIjoxNzcxMzk0MDY1fQ.IGVZVMq3Z63-zfqaK1GZst_J0R7XLGp06SOQ5Z0Jceo
+    volumes:
+      - ./certs/fluxforge.crt:/etc/ssl/fluxforge.crt:ro
     depends_on:
       - fluxforge-lb
     restart: unless-stopped
@@ -167,6 +176,22 @@ services:
       - fluxforge-network
     deploy:
       replicas: 1
+
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: fluxforge-prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - fluxforge-network
 
 volumes:
   postgres_data:

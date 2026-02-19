@@ -1,139 +1,169 @@
-# FluxForge: Deterministic Control Plane for Distributed Systems
+# FluxForge: Production-Grade Distributed Control Plane
 
-> **Status**: v0.4.0-production-hardened (Phase 4 Complete)
-> **License**: MIT
-> **Architecture**: Event-Driven, Admission-Controlled Scheduler
+FluxForge is a certified, production-ready distributed control plane architecture designed for orchestrating stateful workloads with strict consistency guarantees and high availability.
 
-FluxForge is a high-performance, deterministic control plane for orchestrating distributed state across unreliable infrastructure. Unlike general-purpose CI/CD runners or strict GitOps operators, FluxForge focuses on **Intelligent Scheduling**, **Failure Domain Isolation**, and **Auditable Reconciliation**.
+## Overview
 
-Designed for systems where:
-- **Partial failure is the norm**, not the exception.
-- **Agents are untrusted** and may report stale or malicious data.
-- **Metrics lag reality**, requiring predictive scheduling.
-- **Reconciliation must be fair**, cost-aware, and strictly bounded.
+FluxForge solves the problem of reliable orchestration in distributed systems. Unlike traditional CI/CD or simple task runners, FluxForge implements a formal control plane design pattern. It provides a reconciliation loop that continuously drives the actual state of the system towards a declared desired state, ensuring resilience against network partitions, node failures, and drift.
 
----
+Built on the principles of atomic persistence and distributed consensus, FluxForge acts as the "brain" for your infrastructure, capable of managing thousands of agents with forensic-grade auditability.
 
-## 🏗 High-Level Architecture
+## Key Features
 
-FluxForge introduces an **Admission-Controlled Scheduling Layer** between the API and the Execution Workers to prevent the "thundering herd" problem common in naive control planes.
+- **Distributed Control Plane**: Stateless control nodes with shared state persistence.
+- **Leader Election**: Automatic, lease-based leader election using Redis primitives for high availability.
+- **Agent Lifecycle Management**: Full lifecycle handling including registration, heartbeats, dead-node detection, and auto-recovery.
+- **Atomic Persistence and Reconciliation**: Versioned, CAS (Compare-And-Swap) based state updates ensuring no data corruption.
+- **Multi-Tenant Isolation**: Strict logical isolation of resources and agents per tenant.
+- **JWT Authentication**: Secure, token-based authentication for all API and agent interactions.
+- **TLS Encryption**: Enforced TLS 1.2+ for all transit data.
+- **Chaos-Tested Resilience**: Verified against random node kills, network partitions, and process crashes.
+- **Backup and Disaster Recovery**: Automated point-in-time recovery and persistence verification.
+- **Kubernetes Deployment Support**: Production-ready manifests for cloud-native deployment.
+- **Load Balancer Support**: Integrated Nginx load balancing for API traffic distribution.
+- **Observability with Prometheus**: Comprehensive metrics for deep system insight and alerting.
 
-```mermaid
-graph TD
-    API[Control Plane API] -->|AuthZ & Validation| Ingest[Ingest Queue]
-    Ingest --> Scheduler[Admission-Controlled Scheduling Layer]
-    
-    subgraph "Control Plane Core"
-        Scheduler -->|Priority & Cost Check| WorkerPool[Reconciler Workers]
-        WorkerPool -->|State Updates| Store[(State Store)]
-        WorkerPool -->|Event Log| Timeline[(Audit Timeline)]
-        WorkerPool -->|Dispatch| Dispatcher[Agent Dispatcher]
-    end
+## Architecture
 
-    Dispatcher <-->|mTLS Stream| Agents[Edge Agents]
+The FluxForge architecture follows a strict separation of concerns:
+
+- **Control Plane Nodes**: Stateless Go services that handle API requests, run the reconciliation loop, and manage the scheduler. They form a high-availability cluster.
+- **Agents**: Lightweight execution units running on target infrastructure. They pull jobs, execute commands, and report status/heartbeats.
+- **Redis Persistence Layer**: The single source of truth. Uses AOF (Append-Only File) for durability and atomic operations for concurrency control.
+- **Load Balancer**: An Nginx layer that distributes incoming agent and user traffic across healthy control plane nodes, handling TLS termination.
+- **Prometheus Monitoring**: Scrapes metrics from all components to provide real-time visibility into system health, queue depths, and error rates.
+
+**Logical Flow:**
+1.  **Desired State Definition**: User submits a target state via API.
+2.  **Persistence**: Control Plane saves state to Redis with atomic versioning.
+3.  **Scheduler**: Leader node's scheduler picks up the pending state.
+4.  **Disptach**: Job is dispatched to the target Agent via the control plane.
+5.  **Execution**: Agent executes the logic and reports the result.
+6.  **Reconciliation**: Control Plane updates the actual state to match the desired state.
+
+## Production Guarantees
+
+FluxForge provides specific distributed system guarantees:
+
+- **No Split Brain**: Leader election utilizes aggressive fencing tokens (epochs) to ensure only one leader creates schedules at a time.
+- **Atomic Persistence**: All state transitions use Optimistic Locking (CAS) to prevent lost updates or dirty reads.
+- **Automatic Leader Failover**: System detects leader failure within 15 seconds and elects a new leader automatically.
+- **Crash-Safe Reconciliation**: The reconciliation loop is idempotent; crashed tasks are re-queued and retried safely without side effects.
+- **Agent Failure Detection and Recovery**: Agents are marked offline after missed heartbeats and automatically reintegrated upon reconnection.
+- **Tenant Isolation**: Data access is strictly scoped by Tenant ID; cross-tenant access is cryptographically impossible without a valid token.
+- **Secure Authentication**: All endpoints require signed JWTs; unauthenticated requests are rejected at the edge.
+
+## Technology Stack
+
+- **Go**: Core Control Plane and Agent implementation (High concurrency, strict typing).
+- **Redis**: Distributed coordination, locking, and persistence store.
+- **Docker**: Containerization standard for all components.
+- **Kubernetes**: Orchestration platform for production deployment.
+- **Nginx**: High-performance load balancing and TLS termination.
+- **Prometheus**: Metrics collection, query engine, and alerting.
+- **JWT**: JSON Web Tokens for stateless, secure authentication.
+
+## Deployment Options
+
+### Docker Deployment
+Ideal for local testing and development.
+```bash
+docker compose up -d --build
 ```
 
-### Key Components
+### Kubernetes Deployment
+Production-grade deployment using manifests.
+```bash
+kubectl apply -f deployments/kubernetes/
+```
 
-1.  **Ingest Queue (NATS/Kafka)**: Backpressure mechanism to protect the core.
-2.  **Intelligent Scheduler**: 
-    - **Priority Aging**: Prevents starvation of low-priority tasks.
-    - **Cost-Awareness**: Rejects tasks if "CPU Budget" is exceeded.
-    - **Failure Domain Isolation**: Throttles scheduling to zones/racks experiencing high failure rates.
-3.  **Composite Health Engine**:
-    - Calculates `HealthScore` = `0.2*AgentReport + 0.5*ObservedFailure + 0.3*ExternalProbe`.
-    - Automatically quarantines nodes with degrading scores using an **Exponential Weighted Moving Average (EWMA)** decay.
-4.  **Reconciliation Timeline**:
-    - An append-only audit log of every state transition (`QUEUED` -> `DISPATCHED` -> `FINISHED`).
-    - **Bounded Storage**: 24h TTL, Max 200 events per Request ID.
+### Local Development
+Run the control plane binaries directly.
+```bash
+go run control_plane/main.go
+```
 
----
+## Quick Start Guide
 
-## 🧠 Reconciliation Model
+1.  **Clone the Repository**
+    ```bash
+    git clone https://github.com/itskum47/FluxForge.git
+    cd FluxForge
+    ```
 
-FluxForge moves beyond "Applying changes" to a detailed lifecycle management model:
+2.  **Start the Stack**
+    ```bash
+    docker compose up -d --build
+    ```
 
-1.  **Check**: Compare `DesiredState` vs `ActualState` (non-zero exit code detection).
-2.  **Drift Detection**: If mismatched, create a `ReconciliationTask`.
-3.  **Admission**: Task enters the **Priority Queue**. 
-    - *Is the tenant over quota?* (Hard Limit)
-    - *Is the failure domain healthy?* (Soft Limit)
-    - *Is the queue full?* (Self-Protection: Drop P10 tasks)
-4.  **Execution**: 
-    - Idempotency Check (`X-Flux-Idempotency-Key`): Returns cached success if already done.
-    - Dispatch to Agent.
-5.  **Verification**: Poll until `ActualState` matches or Deadline Exceeded.
+3.  **Verify Leader Election**
+    Confirm a leader has been elected among the control plane nodes.
+    ```bash
+    curl -k https://localhost:8443/metrics | grep flux_leader_status
+    ```
 
----
+4.  **Start an Agent**
+    (Automatically started by Docker Compose, check logs)
+    ```bash
+    docker logs -f deployments-agent-1
+    ```
 
-## 🛡 Failure Handling Philosophy
+5.  **Submit a Job**
+    Obtain a token and submit a test job.
+    ```bash
+    TOKEN=$(./scripts/generate_token.sh default)
+    curl -k -X POST https://localhost:8443/jobs \
+      -H "Authorization: Bearer $TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{"command":"echo Hello FluxForge","node_id":"agent-1"}'
+    ```
 
-We assume infrastructure is hostile.
+## Security
 
-1.  **Partial Failure is Normal**:
-    - If "Zone-A" has high error rates, the Scheduler **automatically throttles** new tasks to that zone.
-    - It does not stop globally; it creates a "blast radius containment".
+- **JWT Authentication**: Centralized identity management. Tokens are signed with a secure secret and include tenant context.
+- **TLS Enforcement**: Communication between Agents, Users, and the Control Plane is encrypted via TLS 1.2+. Non-TLS connections are rejected.
+- **Tenant Isolation**: Middleware ensures that a request context is permanently bound to the token's Tenant ID, preventing privilege escalation.
 
-2.  **Agents Lie**:
-    - An agent saying "I am healthy" is ignored if it failed the last 5 jobs.
-    - Source of Truth = **Observed Behavior** (Control Plane view), not Self-Reported State.
+## Chaos Testing and Reliability
 
-3.  **Retries Amplify Outages**:
-    - FluxForge uses specific **Backoff Policies** (Linear, Exponential) per failure type.
-    - **Poison Pattern Detection**: If a task crashes 3 different nodes, it is suspended to prevent taking down the fleet.
+FluxForge has undergone rigorous Chaos Engineering validation (Phase 7 Certification).
+- **Chaos Monkey**: A dedicated tool (`scripts/phase7_chaos_monkey.sh`) randomly kills control plane nodes and agents during active workload execution.
+- **Failover Verification**: Tests confirm that killing the leader node results in immediate failover with zero data loss.
+- **Network Partitions**: The system is verified to recover gracefully from network partitions, ensuring eventual consistency.
 
----
+## Monitoring and Observability
 
-## 📊 Observability Model
+- **Prometheus Metrics**: Exposes Red (Rate, Errors, Duration) metrics for all RPCs and DB operations.
+- **Alerting**: Pre-configured alerts for `AgentOffline`, `LeaderLost`, `HighErrorRate`, and `IntegrityMismatch`.
+- **Dashboards**: Integrated visualization of cluster health and tenant activity.
 
-"Why is it broken?" should be answerable in <60 seconds.
+## Project Structure
 
-### Metrics (Prometheus)
-- `flux_queue_depth`: Pending tasks (Leading indicator of overload).
-- `flux_queue_oldest_task_age_seconds`: Starvation metric.
-- `flux_scheduler_mode`: `NORMAL` | `DEGRADED` | `READ_ONLY`.
-- `flux_domain_failure_rate`: Real-time health of your infrastructure zones.
+- `control_plane/`: Core orchestration logic, API, and scheduler.
+- `agent/`: Source code for the remote execution agent.
+- `deployments/`: Docker Compose files, Kubernetes manifests, and Nginx config.
+- `scripts/`: Operational scripts for tokens, backups, chaos testing, and audits.
+- `api/`: Shared data structures and constants.
 
-### Debug Snapshots
-`GET /scheduler/debug/snapshot` returns the internal heap state, failure counters, and active quarantines.
+## Production Certification Status
 
----
+| Certification Phase | Status |
+|---------------------|--------|
+| Phase 1: Core Lifecycle | ✅ PASS |
+| Phase 2: Orchestration | ✅ PASS |
+| Phase 3: State Engine | ✅ PASS |
+| Phase 4: Scheduling | ✅ PASS |
+| Phase 5: HA & Failover | ✅ PASS |
+| Phase 6: Multi-Tenancy | ✅ PASS |
+| Phase 7: Chaos Resilience | ✅ PASS |
+| Phase 8: Hardening & Ops | ✅ PASS |
 
-## ⚡ Comparison: Why not Flux/Argo?
+## Future Improvements
 
-| Feature | FluxForge | GitOps Operators (ArgoCD/Flux) |
-| :--- | :--- | :--- |
-| **Primary Goal** | Distributed Orchestration & Resilience | K8s Manifest Sync |
-| **Scheduling** | **Priority + Cost + Fairness** | FIFO / Event Loop |
-| **Failure Handling** | **Domain Isolation & Quarantine** | Retry until crashloop |
-| **Target** | Remote Agents (IoT, Edge, VM) | Kubernetes Clusters |
-| **State** | Imperative + Declarative | Purely Declarative |
-| **Latency** | Real-time (<50ms Dispatch) | Minutes (Reconcile Interval) |
+- **Raft Consensus**: Migrating the WAL (Write Ahead Log) to embedded Raft for simpler deployment without Redis.
+- **Sharding**: Horizontal sharding of the scheduler for massive scale (>100k agents).
+- **Distributed Tracing**: Full OpenTelemetry integration for request tracing across microservices.
 
-Use **FluxForge** when you need to control *execution behavior*, not just *configuration state*.
+## License
 
----
-
-## 🚀 Releases
-
-- **v0.4.0** (Current): Production Hardening (Scheduler Modes, Tenant Isolation, Observability).
-- **v0.3.0**: Distributed Execution (Dispatcher, Agents).
-- **v0.2.0**: Desired State Engine.
-- **v0.1.0**: Core Control Plane types.
-
-## 📚 Documentation
-
-Detailed architecture and operational guides:
-
-- [Architecture Overview](docs/architecture/overview.md)
-- [Scheduler Design](docs/architecture/scheduler-design.md)
-- [Failure Scenarios](docs/operations/failure-scenarios.md)
-- [Operations Runbook](docs/operations/runbook.md)
-
----
-
-## 🔮 Roadmap
-
-- **Phase 5 (Persistence)**: Replace in-memory stores with Postgres/Redis. Leader Election.
-- **Phase 6 (Security)**: Full mTLS enforcement, OPA integration.
-- **Phase 7 (Scale)**: Horizontal sharding, 10k node simulation.
+MIT License

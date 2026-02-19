@@ -24,3 +24,10 @@ func TenantKey(tenantID string, resource Resource, id string) string {
 func TenantPrefix(tenantID string, resource Resource) string {
 	return fmt.Sprintf("fluxforge:tenants:%s:%s:", tenantID, resource)
 }
+
+// TenantWildcardPrefix constructs a global search pattern for a resource across all tenants.
+// Format: fluxforge:tenants:*:resource:*
+// WARNING: This is a Cross-Tenant operation. Use with caution.
+func TenantWildcardPrefix(resource Resource) string {
+	return fmt.Sprintf("fluxforge:tenants:*:%s:*", resource)
+}

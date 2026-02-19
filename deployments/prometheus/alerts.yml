@@ -1,0 +1,45 @@
+groups:
+- name: fluxforge-alerts
+  rules:
+  # 1. Leader Lost (Critical)
+  # Trigger if no leader is elected for 1 minute
+  - alert: LeaderLost
+    expr: sum(flux_leader_status) == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "FluxForge Cluster has no leader"
+      description: "No control plane node is reporting as leader for >1m."
+
+  # 2. Agent Offline (Warning)
+  # Trigger if connected agents drop to 0
+  - alert: AgentOffline
+    expr: sum(flux_connected_agents) == 0
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: "No Agents Connected"
+      description: "The cluster has 0 connected agents."
+
+  # 3. Scheduler Deadlock (Critical)
+  # Trigger if pending jobs exist but completion rate is 0
+  - alert: SchedulerDeadlock
+    expr: (flux_queue_depth > 0) and (rate(flux_task_success_total[5m]) == 0)
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Scheduler appears deadlocked"
+      description: "Queue has pending jobs but no completions in last 5m."
+
+  # 4. Memory High (Warning)
+  - alert: ControlPlaneHighMemory
+    expr: process_resident_memory_bytes{job="fluxforge-control-plane"} > 500000000
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Control Plane Memory High"
+      description: "Node {{ $labels.instance }} is using > 500MB RAM."

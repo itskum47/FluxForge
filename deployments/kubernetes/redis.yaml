@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluxforge-redis
+  namespace: fluxforge
+spec:
+  ports:
+    - port: 6379
+      targetPort: 6379
+  selector:
+    app: fluxforge-redis
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: fluxforge-redis
+  namespace: fluxforge
+spec:
+  serviceName: fluxforge-redis
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fluxforge-redis
+  template:
+    metadata:
+      labels:
+        app: fluxforge-redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+          ports:
+            - containerPort: 6379
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi

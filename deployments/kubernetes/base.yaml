@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fluxforge
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: jwt-secret
+  namespace: fluxforge
+type: Opaque
+stringData:
+  # In production, use a strong random secret
+  JWT_SECRET: "insecure_default_secret_for_dev_mode_only_32bytes"
+  FLUX_AGENT_TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0ZW5hbnRfaWQiOiJkZWZhdWx0Iiwicm9sZSI6ImFnZW50Iiwic3ViIjoiYWdlbnQtMSIsImlzcyI6ImZsdXhmb3JnZSIsImF1ZCI6ImZsdXhmb3JnZS1hcGkiLCJleHAiOjIwODY3NTQwNjUsImlhdCI6MTc3MTM5NDA2NSwibmJmIjoxNzcxMzk0MDY1fQ.IGVZVMq3Z63-zfqaK1GZst_J0R7XLGp06SOQ5Z0Jceo"

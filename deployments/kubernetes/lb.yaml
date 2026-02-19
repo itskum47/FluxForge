@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluxforge-lb
+  namespace: fluxforge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fluxforge-lb
+  template:
+    metadata:
+      labels:
+        app: fluxforge-lb
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+          ports:
+            - containerPort: 8080
+            - containerPort: 443
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+            - name: tls-certs
+              mountPath: /etc/nginx/certs
+              readOnly: true
+      volumes:
+        - name: nginx-conf
+          configMap:
+            name: nginx-config
+        - name: tls-certs
+          secret:
+            secretName: tls-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluxforge-lb
+  namespace: fluxforge
+spec:
+  type: LoadBalancer
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+    - name: https
+      port: 443
+      targetPort: 443
+  selector:
+    app: fluxforge-lb

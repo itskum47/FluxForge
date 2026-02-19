@@ -1,12 +1,9 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
-	"time"
 
-	"github.com/itskum47/FluxForge/control_plane/coordination"
 	"github.com/itskum47/FluxForge/control_plane/middleware"
 )
 
@@ -54,61 +51,13 @@ func (a *API) handleGetDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	metrics := a.collectDashboardMetrics(r.Context(), tenantID)
+	metrics, err := a.dashboardService.GetDashboardMetrics(r.Context(), tenantID)
+	if err != nil {
+		http.Error(w, "Failed to fetch metrics", http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*") // CORS for local dev
 	json.NewEncoder(w).Encode(metrics)
-}
-
-// collectDashboardMetrics gathers metrics from all components.
-func (a *API) collectDashboardMetrics(ctx context.Context, tenantID string) DashboardMetrics {
-	// Scheduler Metrics (Global for now, ideally filtered by tenant)
-	schedMetrics := a.scheduler.GetMetrics()
-
-	// Leadership Metrics (Global)
-	var leaderState coordination.LeaderState
-	if a.elector != nil {
-		leaderState = a.elector.GetState()
-	}
-
-	// Store Metrics (Tenant Scoped)
-	pending, _ := a.store.CountStatesByStatus(ctx, tenantID, "pending")
-	drifted, _ := a.store.CountStatesByStatus(ctx, tenantID, "drifted")
-	agents, _ := a.store.ListAgents(ctx, tenantID)
-
-	return DashboardMetrics{
-		// Scheduler
-		QueueDepth:          schedMetrics.QueueDepth,
-		ActiveTasks:         schedMetrics.ActiveTasks,
-		MaxConcurrency:      schedMetrics.MaxConcurrency,
-		WorkerSaturation:    schedMetrics.WorkerSaturation,
-		CircuitBreakerState: schedMetrics.CircuitBreakerState,
-		AdmissionMode:       schedMetrics.AdmissionMode,
-		RuntimeMode:         schedMetrics.RuntimeMode,
-
-		// Leadership
-		IsLeader:          leaderState.IsLeader,
-		CurrentEpoch:      leaderState.CurrentEpoch,
-		LeaderTransitions: leaderState.Transitions,
-		NodeID:            leaderState.NodeID,
-
-		// Store
-		PendingStates: pending,
-		DriftedStates: drifted,
-		ActiveAgents:  len(agents),
-
-		// Multi-Cluster (Phase 6.4)
-		ClusterID: "cluster-primary", // TODO: Get from config
-		ClusterRole: func() string {
-			if leaderState.IsLeader {
-				return "leader"
-			}
-			return "follower"
-		}(),
-		Region: "us-east-1", // TODO: Get from config
-
-		// Timestamp
-		Timestamp: time.Now().Unix(),
-	}
 }

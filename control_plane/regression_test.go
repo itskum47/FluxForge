@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/itskum47/FluxForge/control_plane/idempotency"
+	"github.com/itskum47/FluxForge/control_plane/middleware"
 	"github.com/itskum47/FluxForge/control_plane/scheduler"
 	"github.com/itskum47/FluxForge/control_plane/store"
 )
@@ -22,7 +23,7 @@ func TestRegression_AgentLifecycle(t *testing.T) {
 	reconciler := NewReconciler(s, dispatcher, nil)
 	schedConfig := scheduler.DefaultSchedulerConfig()
 	sched := scheduler.NewScheduler(s, reconciler, 0, 1, schedConfig)
-	api := NewAPI(s, dispatcher, reconciler, sched, idempotency.NewStore(nil))
+	api := NewAPI(s, dispatcher, reconciler, sched, nil, idempotency.NewStore(nil))
 
 	// 1. Register Agent
 	agent := store.Agent{
@@ -34,8 +35,10 @@ func TestRegression_AgentLifecycle(t *testing.T) {
 	body, _ := json.Marshal(agent)
 	req := httptest.NewRequest("POST", "/agent/register", bytes.NewBuffer(body))
 	req.Header.Set("X-Agent-Signature", "sig-123") // Phase 4 requirement
+	// Inject TenantID into context
+	ctx := context.WithValue(req.Context(), middleware.TenantKey, "default")
 	w := httptest.NewRecorder()
-	api.handleRegister(w, req)
+	api.handleRegister(w, req.WithContext(ctx))
 
 	if w.Code != http.StatusOK {
 		t.Errorf("Registration failed: %d", w.Code)
@@ -43,8 +46,9 @@ func TestRegression_AgentLifecycle(t *testing.T) {
 
 	// 2. Verify Listing
 	req = httptest.NewRequest("GET", "/agents", nil)
+	ctx = context.WithValue(req.Context(), middleware.TenantKey, "default")
 	w = httptest.NewRecorder()
-	api.handleListAgents(w, req)
+	api.handleListAgents(w, req.WithContext(ctx))
 
 	var agents []store.Agent
 	json.Unmarshal(w.Body.Bytes(), &agents)
@@ -85,7 +89,7 @@ func TestRegression_ReconciliationLoop(t *testing.T) {
 	reconciler := NewReconciler(s, dispatcher, nil)
 	schedConfig := scheduler.DefaultSchedulerConfig()
 	sched := scheduler.NewScheduler(s, reconciler, 0, 1, schedConfig)
-	api := NewAPI(s, dispatcher, reconciler, sched, idempotency.NewStore(nil))
+	api := NewAPI(s, dispatcher, reconciler, sched, nil, idempotency.NewStore(nil))
 
 	// Start Scheduler
 	ctx := context.Background()
@@ -93,7 +97,7 @@ func TestRegression_ReconciliationLoop(t *testing.T) {
 	// Give it a moment to start logic? No, Submit handles queuing.
 
 	// 1. Register Agent manually
-	s.UpsertAgent(ctx, &store.Agent{
+	s.UpsertAgent(ctx, "default", &store.Agent{
 		NodeID:        "reg-node-1",
 		IPAddress:     "10.0.0.1",
 		Status:        "active",
@@ -116,7 +120,8 @@ func TestRegression_ReconciliationLoop(t *testing.T) {
 	// Wrap with Middleware manually or call handler?
 	// The API struct methods don't have middleware inside them (it's in main.go).
 	// So we call handleCreateState directly.
-	api.handleCreateState(w, req)
+	ctx = context.WithValue(req.Context(), middleware.TenantKey, "default")
+	api.handleCreateState(w, req.WithContext(ctx))
 
 	var stateResp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &stateResp)
@@ -137,7 +142,8 @@ func TestRegression_ReconciliationLoop(t *testing.T) {
 	req = httptest.NewRequest("POST", "/states/"+stateID+"/reconcile", nil)
 	req.Header.Set("X-Flux-Idempotency-Key", "idemp-2")
 	w = httptest.NewRecorder()
-	api.handleReconcileState(w, req)
+	ctx = context.WithValue(req.Context(), middleware.TenantKey, "default")
+	api.handleReconcileState(w, req.WithContext(ctx))
 
 	if w.Code != http.StatusAccepted {
 		t.Errorf("Reconcile trigger failed: %d", w.Code)

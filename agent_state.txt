@@ -1,0 +1,1 @@
+{"node_id":"agent-1","tenant_id":"default","hostname":"c893ac48426e","ip_address":"c893ac48426e","version":"0.1.0","status":"active","last_heartbeat":"2026-02-19T03:04:51.717685417Z","created_at":"0001-01-01T00:00:00Z","updated_at":"0001-01-01T00:00:00Z","metadata":null,"port":8081,"tier":""}

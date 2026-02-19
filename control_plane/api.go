@@ -26,8 +26,11 @@ type API struct {
 	dispatcher *Dispatcher
 	reconciler *Reconciler
 	scheduler  *scheduler.Scheduler
-	elector    *coordination.LeaderElector // Phase 6: Dashboard integration
-	wsHub      *MetricsHub                 // Phase 6: WebSocket hub
+	elector    *coordination.LeaderElector
+
+	// Services
+	dashboardService *DashboardService
+	wsHub            *MetricsHub
 
 	idempotency *idempotency.Store
 
@@ -36,12 +39,12 @@ type API struct {
 	reconcileLimiter *rate.Limiter
 }
 
-func NewAPI(store store.Store, dispatcher *Dispatcher, reconciler *Reconciler, sched *scheduler.Scheduler, elector *coordination.LeaderElector, idempotencyStore *idempotency.Store) *API {
+func NewAPI(store store.Store, dispatcher *Dispatcher, reconciler *Reconciler, scheduler *scheduler.Scheduler, elector *coordination.LeaderElector, idempotencyStore *idempotency.Store) *API {
 	api := &API{
 		store:       store,
 		dispatcher:  dispatcher,
 		reconciler:  reconciler,
-		scheduler:   sched,
+		scheduler:   scheduler,
 		elector:     elector,
 		idempotency: idempotencyStore,
 		// Allow 100 heartbeats/sec, burst 200
@@ -49,6 +52,9 @@ func NewAPI(store store.Store, dispatcher *Dispatcher, reconciler *Reconciler, s
 		// Allow 10 reconciles/sec, burst 20
 		reconcileLimiter: rate.NewLimiter(rate.Limit(10), 20),
 	}
+
+	// Initialize Services
+	api.dashboardService = NewDashboardService(store, scheduler, elector)
 
 	// Initialize WebSocket hub
 	api.wsHub = NewMetricsHub(api)
@@ -445,7 +451,7 @@ func (a *API) handleCreateState(w http.ResponseWriter, r *http.Request) {
 	// Trigger reconciliation directly for now (Phase 3)
 	// Note: In Phase 4/5 this should be handled by Scheduler picking up the change
 	// or via event stream. But explicit call is fine for now.
-	go a.reconciler.Reconcile(context.Background(), state.StateID)
+	go a.reconciler.Reconcile(context.Background(), tenantID, state.StateID)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -461,7 +467,13 @@ func (a *API) handleGetState(w http.ResponseWriter, r *http.Request) {
 	}
 	stateID := pathParts[2]
 
-	state, err := a.store.GetState(r.Context(), stateID)
+	tenantID, err := middleware.GetTenantFromContext(r.Context())
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	state, err := a.store.GetState(r.Context(), tenantID, stateID)
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return

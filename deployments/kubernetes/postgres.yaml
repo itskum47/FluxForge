@@ -1,0 +1,68 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluxforge-db-schema
+  namespace: fluxforge
+data:
+  01-schema.sql: |
+    CREATE TABLE IF NOT EXISTS agents (node_id VARCHAR(64) PRIMARY KEY, hostname VARCHAR(255), ip_address VARCHAR(64), status VARCHAR(32), last_heartbeat TIMESTAMP, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS jobs (job_id VARCHAR(64) PRIMARY KEY, node_id VARCHAR(64), command TEXT, status VARCHAR(32), exit_code INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS desired_states (state_id VARCHAR(64) PRIMARY KEY, node_id VARCHAR(64), spec JSONB, status VARCHAR(32), version BIGINT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluxforge-postgres
+  namespace: fluxforge
+spec:
+  ports:
+    - port: 5432
+  selector:
+    app: fluxforge-postgres
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: fluxforge-postgres
+  namespace: fluxforge
+spec:
+  serviceName: fluxforge-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fluxforge-postgres
+  template:
+    metadata:
+      labels:
+        app: fluxforge-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:14-alpine
+          env:
+            - name: POSTGRES_DB
+              value: "fluxforge"
+            - name: POSTGRES_USER
+              value: "fluxforge"
+            - name: POSTGRES_PASSWORD
+              value: "fluxforge_dev_password"
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: init-scripts
+          configMap:
+            name: fluxforge-db-schema
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi

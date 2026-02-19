@@ -30,7 +30,7 @@ func (d *Dispatcher) DispatchJob(ctx context.Context, agent *store.Agent, job *s
 	// Check context before starting
 	if ctx.Err() != nil {
 		log.Printf("DispatchJob skipped: context cancelled (%v)", ctx.Err())
-		d.store.UpdateJobStatus(context.Background(), job.JobID, "failed", 0, "", "dispatch cancelled: leadership lost")
+		d.store.UpdateJobStatus(context.Background(), job.TenantID, job.JobID, "failed", 0, "", "dispatch cancelled: leadership lost")
 		return
 	}
 
@@ -44,13 +44,13 @@ func (d *Dispatcher) DispatchJob(ctx context.Context, agent *store.Agent, job *s
 	data, err := json.Marshal(payload)
 	if err != nil {
 		// Use UpdateJobStatus interface method
-		d.store.UpdateJobStatus(context.Background(), job.JobID, "failed", 0, "", fmt.Sprintf("failed to marshal payload: %v", err))
+		d.store.UpdateJobStatus(context.Background(), job.TenantID, job.JobID, "failed", 0, "", fmt.Sprintf("failed to marshal payload: %v", err))
 		return
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(data))
 	if err != nil {
-		d.store.UpdateJobStatus(context.Background(), job.JobID, "failed", 0, "", fmt.Sprintf("failed to create request: %v", err))
+		d.store.UpdateJobStatus(context.Background(), job.TenantID, job.JobID, "failed", 0, "", fmt.Sprintf("failed to create request: %v", err))
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -59,19 +59,19 @@ func (d *Dispatcher) DispatchJob(ctx context.Context, agent *store.Agent, job *s
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		d.store.UpdateJobStatus(context.Background(), job.JobID, "failed", 0, "", fmt.Sprintf("failed to contact agent: %v", err))
+		d.store.UpdateJobStatus(context.Background(), job.TenantID, job.JobID, "failed", 0, "", fmt.Sprintf("failed to contact agent: %v", err))
 		return
 	}
 	defer resp.Body.Close()
 
 	// ✅ CORRECT SEMANTICS
 	if resp.StatusCode != http.StatusAccepted {
-		d.store.UpdateJobStatus(context.Background(), job.JobID, "failed", 0, "", fmt.Sprintf("agent returned status %d", resp.StatusCode))
+		d.store.UpdateJobStatus(context.Background(), job.TenantID, job.JobID, "failed", 0, "", fmt.Sprintf("agent returned status %d", resp.StatusCode))
 		return
 	}
 
 	// Job accepted for execution
-	d.store.UpdateJobStatus(context.Background(), job.JobID, "running", 0, "", "")
+	d.store.UpdateJobStatus(context.Background(), job.TenantID, job.JobID, "running", 0, "", "")
 
 	log.Printf("Job %s dispatched to agent %s", job.JobID, agent.NodeID)
 }

@@ -32,11 +32,11 @@ func (f *FaultInjectionStore) shouldFail() bool {
 }
 
 // Override critical methods
-func (f *FaultInjectionStore) GetAgent(ctx context.Context, id string) (*store.Agent, error) {
+func (f *FaultInjectionStore) GetAgent(ctx context.Context, tenantID string, id string) (*store.Agent, error) {
 	if f.shouldFail() {
 		return nil, errors.New("simulated db error")
 	}
-	return f.Store.GetAgent(ctx, id)
+	return f.Store.GetAgent(ctx, tenantID, id)
 }
 
 // Add more overrides as needed for the test...
@@ -91,11 +91,11 @@ func TestChaos_DBFailover(t *testing.T) {
 
 	// 2. Happy Path - Store operations work
 	t.Log("Testing healthy DB operations...")
-	if err := baseStore.UpsertAgent(ctx, agent); err != nil {
+	if err := baseStore.UpsertAgent(ctx, "default", agent); err != nil {
 		t.Fatalf("Failed to insert agent: %v", err)
 	}
 
-	retrieved, err := fStore.GetAgent(ctx, "chaos-agent")
+	retrieved, err := fStore.GetAgent(ctx, "default", "chaos-agent")
 	if err != nil {
 		t.Fatalf("Failed to retrieve agent: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestChaos_DBFailover(t *testing.T) {
 	fStore.SetFail(true)
 
 	// 4. Verify operations fail gracefully
-	_, err = fStore.GetAgent(ctx, "chaos-agent")
+	_, err = fStore.GetAgent(ctx, "default", "chaos-agent")
 	if err == nil {
 		t.Error("GetAgent should have failed with DB error, but got nil")
 	} else {
@@ -121,7 +121,7 @@ func TestChaos_DBFailover(t *testing.T) {
 	fStore.SetFail(false)
 
 	// 6. Verify recovery
-	retrieved, err = fStore.GetAgent(ctx, "chaos-agent")
+	retrieved, err = fStore.GetAgent(ctx, "default", "chaos-agent")
 	if err != nil {
 		t.Errorf("GetAgent failed after recovery: %v", err)
 	}

@@ -31,14 +31,15 @@ func TestTaskTimeout_KillSwitch(t *testing.T) {
 		Status:          "pending",
 		CheckCmd:        "sleep 300", // 5 minute sleep - should timeout
 		DesiredExitCode: 0,
+		TenantID:        "default",
 	}
-	s.UpsertState(context.Background(), state)
+	s.UpsertState(context.Background(), "default", state)
 
 	ctx := context.Background()
 	startTime := time.Now()
 
 	// Run reconciliation - should timeout quickly
-	err := reconciler.Reconcile(ctx, state.StateID)
+	err := reconciler.Reconcile(ctx, "default", state.StateID)
 	elapsed := time.Since(startTime)
 
 	// Verify it timed out (should get context deadline exceeded error)
@@ -73,15 +74,16 @@ func TestEventPublishFailure_NonBlocking(t *testing.T) {
 		Status:          "pending",
 		CheckCmd:        "true",
 		DesiredExitCode: 0,
+		TenantID:        "default",
 	}
-	s.UpsertState(context.Background(), state)
+	s.UpsertState(context.Background(), "default", state)
 
 	ctx := context.Background()
 	startTime := time.Now()
 
 	// Run reconciliation - will fail at agent lookup, but that's OK
 	// The key is that updateStatus should NOT block on publish failures
-	_ = reconciler.Reconcile(ctx, state.StateID)
+	_ = reconciler.Reconcile(ctx, "default", state.StateID)
 
 	elapsed := time.Since(startTime)
 

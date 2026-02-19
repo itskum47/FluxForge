@@ -47,13 +47,13 @@ func TestE2E_AllPhasesIntegration(t *testing.T) {
 		LastHeartbeat: time.Now(),
 	}
 
-	if err := s.UpsertAgent(ctx, agent); err != nil {
+	if err := s.UpsertAgent(ctx, "default", agent); err != nil {
 		t.Fatalf("Failed to register agent: %v", err)
 	}
 	t.Log("✓ Agent registered successfully")
 
 	// Verify agent retrieval
-	retrieved, err := s.GetAgent(ctx, "e2e-agent")
+	retrieved, err := s.GetAgent(ctx, "default", "e2e-agent")
 	if err != nil || retrieved == nil {
 		t.Fatalf("Failed to retrieve agent: %v", err)
 	}
@@ -69,9 +69,10 @@ func TestE2E_AllPhasesIntegration(t *testing.T) {
 		ApplyCmd:        "echo 'applied'",
 		DesiredExitCode: 0,
 		Version:         1,
+		TenantID:        "default",
 	}
 
-	if err := s.UpsertState(ctx, state); err != nil {
+	if err := s.UpsertState(ctx, "default", state); err != nil {
 		t.Fatalf("Failed to create desired state: %v", err)
 	}
 	t.Log("✓ Desired state created")
@@ -81,13 +82,13 @@ func TestE2E_AllPhasesIntegration(t *testing.T) {
 
 	// Note: Reconciliation will fail at job dispatch since we don't have a real agent
 	// But we can verify the flow works up to that point
-	err = reconciler.Reconcile(ctx, state.StateID)
+	err = reconciler.Reconcile(ctx, "default", state.StateID)
 	if err != nil {
 		t.Logf("✓ Reconciliation attempted (expected failure without real agent): %v", err)
 	}
 
 	// Verify state was updated
-	updatedState, _ := s.GetState(ctx, "e2e-state-1")
+	updatedState, _ := s.GetState(ctx, "default", "e2e-state-1")
 	if updatedState != nil && updatedState.Status == "failed" {
 		t.Log("✓ State status updated correctly")
 	}
